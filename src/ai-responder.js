@@ -12,6 +12,8 @@ const USER_ID_TOOLS = new Set([
   'time_since_last_talk','get_relationship','update_affection','update_trust','update_jealousy','get_love_level',
   'make_promise','get_promises','search_history','get_conversation_summary','count_conversations','get_first_talk_date',
   'get_user_profile','get_user_stats','compatibility_check','generate_pet_name',
+  'love_meter','jealousy_meter','relationship_title','skinship','skinship_stats',
+  'get_anniversaries','next_anniversary','add_anniversary','boyfriend_ranking',
 ]);
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -573,6 +575,76 @@ function isCheatingRelatedMessage(text) {
   return /(二股|浮気|他に(彼氏|好きな人|男)|裏切|嘘つ[いき]|騙[しさ]|他の(男|人|彼氏)|怪しい|誰と(話|LINE|チャット|DM)|隠し(てる|事|ごと)|秘密[がのをは]|バレ[たる]|ごまかし|言い訳|証拠|修羅場|何人|本命|キープ|遊び|浮気性|二番目|嘘ばっか|信[じ用]でき|裏で)/.test(text);
 }
 
+// ━━━ 甘えモード（ランダムデレ） ━━━
+const sweetModeState = new Map();
+
+function checkSweetMode(userId) {
+  const state = sweetModeState.get(userId);
+  if (state && Date.now() - state.since < 15 * 60 * 1000) return true;
+  if (Math.random() < 0.08) {
+    sweetModeState.set(userId, { since: Date.now() });
+    console.log('  [甘えモード] 発動');
+    return true;
+  }
+  return false;
+}
+
+function isLateNightSweet() {
+  const h = getJSTHour();
+  return h >= 23 || h < 2;
+}
+
+// ━━━ ケンカモード ━━━
+function checkFightMode(userId, userMood) {
+  const state = db.getFightState(userId);
+  if (state) return state;
+  if (userMood === 'angry') {
+    db.setFightState(userId, 'ケンカ');
+    console.log('  [ケンカモード] 発動');
+    return { active: 1, reason: 'ケンカ', minutesAgo: 0 };
+  }
+  return null;
+}
+
+function tryResolveFight(userId, userMessage) {
+  if (/(ごめん|許して|仲直り|怒らないで|ごめんなさい|反省|悪かった|ごめ)/.test(userMessage)) {
+    if (Math.random() < 0.4) {
+      db.clearFightState(userId);
+      return true;
+    }
+  }
+  return false;
+}
+
+// ━━━ 好感度連動態度変化 ━━━
+function getAffectionBehavior(affection) {
+  if (affection >= 90) return { desc: '溺愛レベル', tips: '甘い言葉が増える。自分から「好き」「会いたい」を言うことも。でもたまにツンデレ' };
+  if (affection >= 75) return { desc: 'ラブラブ', tips: '甘えることが多い。心配もする。でもツンデレは健在' };
+  if (affection >= 60) return { desc: '仲良し', tips: '普段通りのツンデレ。たまに素直になる' };
+  if (affection >= 40) return { desc: 'ちょっと距離ある', tips: 'ツン多め。デレ少なめ。素っ気ないけど嫌いじゃない' };
+  if (affection >= 20) return { desc: '冷え冷え', tips: 'かなり冷たい。返事も短い。ほとんどデレない' };
+  return { desc: '氷河期', tips: '塩対応に近い。返事が一言。でも別れるとは言わない' };
+}
+
+// ━━━ 話題検出 ━━━
+function detectTopicFromMessage(text) {
+  const topicMap = [
+    [/食|ごはん|ラーメン|カレー|パスタ|アイス|お菓子|おなか|料理|マック|スタバ|コンビニ/, '食べ物'],
+    [/ゲーム|じゃんけん|サイコロ|占い|あそ[ぼば]|遊[ぼば]|ガチャ/, 'ゲーム'],
+    [/学校|テスト|宿題|授業|先生|課題|部活/, '学校'],
+    [/仕事|バイト|上司|残業|面接|内定/, '仕事'],
+    [/寝|眠|ねむ|おやすみ/, '睡眠'],
+    [/好き|会いたい|寂し|甘え|ぎゅー|キス|デート|付き合/, '恋愛'],
+    [/音楽|曲|ライブ|歌/, '音楽'],
+    [/映画|Netflix|アニメ|漫画|ドラマ/, 'エンタメ'],
+    [/天気|暑|寒|雨|雪|台風/, '天気'],
+    [/体調|風邪|頭痛|熱|疲れ|しんどい/, '体調'],
+    [/写真|画像|自撮り|インスタ/, '写真'],
+    [/旅行|出かけ|ドライブ|遠出/, 'お出かけ'],
+  ];
+  return topicMap.filter(([re]) => re.test(text)).map(([, t]) => t);
+}
+
 // ━━━ ユーティリティ ━━━
 function pickRandom(arr, n) {
   const shuffled = [...arr].sort(() => Math.random() - 0.5);
@@ -651,6 +723,7 @@ function splitIntoMulti(text) {
 // ━━━ メッセージ分析 ━━━
 function analyzeMessage(text) {
   return {
+    text,
     len: text.length,
     hasQuestion: /[？?]/.test(text),
     isGreeting: /^(おはよ|こんにち|こんばん|おやすみ|ただいま|おかえり|やっほ|ひさしぶり|おは|へろ)/.test(text.toLowerCase()),
@@ -671,10 +744,22 @@ function selectTools(analysis, isBoyfriend) {
     if (analysis.isEmotional || analysis.isCheatingRelated) { names.add('set_mood'); names.add('update_affection'); names.add('update_jealousy'); }
     if (analysis.mentionsTime) names.add('get_time');
     if (analysis.wantsMemory) { names.add('search_history'); names.add('get_all_memories'); }
-    if (analysis.mentionsGame) { names.add('coin_flip'); names.add('janken'); names.add('love_fortune'); names.add('roll_dice'); names.add('pick_random'); }
+    if (analysis.mentionsGame) { names.add('coin_flip'); names.add('janken'); names.add('love_fortune'); names.add('roll_dice'); names.add('pick_random'); names.add('shiritori'); names.add('love_quiz'); names.add('truth_or_dare'); }
     if (analysis.isLong || analysis.hasQuestion) names.add('react');
     if (Math.random() < 0.3) names.add('send_followup');
     if (Math.random() < 0.2) names.add('express_physically');
+    if (Math.random() < 0.2) names.add('skinship');
+    if (analysis.isEmotional) { names.add('love_meter'); names.add('jealousy_meter'); }
+    if (/(記念|アニバ|誕生)/.test(analysis.text || '')) { names.add('add_anniversary'); names.add('get_anniversaries'); names.add('next_anniversary'); }
+    if (/(ランキング|順位|何位)/.test(analysis.text || '')) names.add('boyfriend_ranking');
+    if (/(称号|タイトル)/.test(analysis.text || '')) names.add('relationship_title');
+    if (/(朝|おはよ|モーニング)/.test(analysis.text || '')) names.add('morning_message');
+    if (/(おやすみ|夜|寝る)/.test(analysis.text || '')) names.add('goodnight_message');
+    if (/(元気|励ま|頑張|つら|しんど)/.test(analysis.text || '')) names.add('cheer_up_message');
+    if (/(デート|プラン|どこ行)/.test(analysis.text || '')) names.add('date_plan');
+    if (/(占い|星座|運勢|ホロスコープ)/.test(analysis.text || '')) { names.add('daily_horoscope'); names.add('compatibility_horoscope'); }
+    if (/(天気|雨|雪|暑|寒)/.test(analysis.text || '')) names.add('weather_reaction');
+    if (/(音楽|曲|プレイリスト|聞[いく])/.test(analysis.text || '')) names.add('mood_playlist');
   } else {
     if (analysis.isEmotional) names.add('set_mood');
     if (analysis.isLong) names.add('react');
@@ -721,10 +806,10 @@ function cleanResponse(text, isBoyfriend, isCaughtMode = false) {
     return l;
   }).join('\n');
   const lines = r.trim().split('\n').filter(l => l.trim());
-  const maxLines = isCaughtMode ? 3 : 2;
+  const maxLines = isCaughtMode ? 4 : 3;
   r = lines.slice(0, maxLines).join('\n').trim();
-  const softMax = isCaughtMode ? 50 : (isBoyfriend ? 30 : 20);
-  const hardMax = isCaughtMode ? 70 : (isBoyfriend ? 45 : 30);
+  const softMax = isCaughtMode ? 80 : (isBoyfriend ? 50 : 30);
+  const hardMax = isCaughtMode ? 120 : (isBoyfriend ? 80 : 50);
   if (r.length > softMax) {
     const period = r.indexOf('。');
     if (period >= 4 && period < hardMax) {
@@ -789,7 +874,7 @@ ${loveMode.personality.map(p => '・' + rp(p)).join('\n')}
 例: ×「そうだな」→○「そうだね」 ×「知らんな」→○「知らんし」 ×「行くか」→○「行こっか」
 
 ■ 鉄則（絶対守れ）
-・1回の返事は短く。5〜25文字が理想。最大でも40文字
+・1回の返事は自然な長さで。5〜40文字が理想。最大でも70文字
 ・分析とか解説とかいらない。感想や反応だけ返せ
 ・相手が言ったことにだけ反応。自分から話題足すな
 ・LINEの1通みたいに返せ。論文みたいな長文禁止
@@ -802,6 +887,20 @@ ${loveMode.personality.map(p => '・' + rp(p)).join('\n')}
   }
   if (extraCtx.sleepyLevel === 1) prompt += `\n・ちょっと眠い。返事ゆるめ`;
   if (extraCtx.sleepyLevel === 2) prompt += `\n・すごく眠い。「ねむ…」とか短め。寝落ちしそう`;
+
+  if (extraCtx.sweetMode) {
+    prompt += `\n・【甘えモード発動中】今はいつもより素直で甘えん坊。「会いたいな」「好き」とか普段言わないことも言っちゃう。でもやりすぎないで`;
+  }
+  if (extraCtx.lateNightSweet && !extraCtx.sweetMode) {
+    prompt += `\n・深夜テンション。ちょっとだけ素直になりやすい。でもベタベタはしない`;
+  }
+  if (extraCtx.fightMode) {
+    prompt += `\n・【ケンカ中】${extraCtx.fightMode.minutesAgo}分前からケンカしてる（理由:${extraCtx.fightMode.reason}）。怒ってる。冷たい。でも嫌いじゃない。謝られたら許すかも`;
+  }
+  if (extraCtx.affectionBehavior) {
+    prompt += `\n・好感度:${extraCtx.affectionBehavior.desc}(${extraCtx.affectionLevel}/100) → ${extraCtx.affectionBehavior.tips}`;
+  }
+
   if (extraCtx.hasImage && extraCtx.mediaDescription) {
     prompt += `\n・※画像/メディアが送られた。内容:「${extraCtx.mediaDescription}」。この内容に自然に反応しろ。見たことを前提に話せ。「見えない」「送ってない」とか言うな`;
   } else if (extraCtx.hasImage) {
@@ -852,7 +951,7 @@ function buildSaltyPrompt(persona, extraCtx) {
   prompt += `
 
 ■ 鉄則（絶対守れ）
-・1回の返事は短く。3〜20文字が理想。最大でも30文字
+・1回の返事は短く。3〜30文字が理想。最大でも45文字
 ・分析とか解説とかいらない。一言で突き放せ
 ・相手が言ったことにだけ反応。自分から話題足すな
 ・同じ返しを2回連続でするな
@@ -901,7 +1000,7 @@ ${panicLevel === 'ちょっとやばい' ? '・なんとなく空気がやばい
 一人称: 私/あたし
 
 ■ 鉄則
-・返事は短く。5〜40文字。焦ってるからちょっと長くなってもいい
+・返事は短く。5〜60文字。焦ってるからもっと長くなってもいい
 ・言い訳は具体的に。「ちがう」だけじゃなくて理由をつける
 ・…（沈黙）を効果的に使え
 ・泣きそうな感じを出してもいい
@@ -1004,12 +1103,43 @@ class AIResponder {
       }
     }
 
+    // ④b 新モード判定（彼氏のみ）
+    let sweetMode = false;
+    let lateNightSweet = false;
+    let fightMode = null;
+    let affectionBehavior = null;
+    let affectionLevel = 50;
+
+    if (isBoyfriend && !cheatingMode) {
+      sweetMode = checkSweetMode(userId);
+      lateNightSweet = isLateNightSweet();
+      fightMode = checkFightMode(userId, userMood);
+      if (fightMode && tryResolveFight(userId, userMessage)) {
+        fightMode = null;
+        console.log('  [ケンカモード] 仲直り成功');
+      }
+      const relStats = db.getRelStats(userId);
+      affectionLevel = relStats?.affection || 50;
+      affectionBehavior = getAffectionBehavior(affectionLevel);
+
+      if (userMood === 'lovey') db.updateRelStats(userId, 'affection', 1);
+      if (userMood === 'angry') db.updateRelStats(userId, 'affection', -1);
+
+      const topics = detectTopicFromMessage(userMessage);
+      if (topics.length > 0) {
+        db.addTopic(userId, channelId, topics[0]);
+      }
+    }
+
     // ⑤ 通常AI生成
     const hasImage = attachments.length > 0 && attachments.some(a =>
       (a.contentType || '').startsWith('image/') || /\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i.test(a.name || '') || a.contentType === 'image/embed'
     );
 
-    const extraCtx = { userMood, sleepyLevel: sleep.sleepyLevel, hasImage, mediaDescription, cheatingEvidence };
+    const extraCtx = {
+      userMood, sleepyLevel: sleep.sleepyLevel, hasImage, mediaDescription, cheatingEvidence,
+      sweetMode, lateNightSweet, fightMode, affectionBehavior, affectionLevel,
+    };
 
     let systemPrompt;
     if (cheatingMode && isBoyfriend) {
@@ -1052,7 +1182,7 @@ class AIResponder {
       model: this.model,
       tools,
       tool_choice: tools ? 'auto' : undefined,
-      max_tokens: cheatingMode ? 200 : (isBoyfriend ? 150 : 80),
+      max_tokens: cheatingMode ? 350 : (isBoyfriend ? 300 : 150),
       temperature: cheatingMode ? 0.95 : (isBoyfriend ? 0.9 : 0.75),
     };
 
@@ -1139,3 +1269,5 @@ class AIResponder {
 module.exports = AIResponder;
 module.exports.calcDelay = calcDelay;
 module.exports.getJSTHour = getJSTHour;
+module.exports.getJSTMonth = getJSTMonth;
+module.exports.getJSTDay = getJSTDay;

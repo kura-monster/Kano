@@ -89,6 +89,46 @@ const TOOL_DEFINITIONS = [
   t('think_internally', '心の中で考える（相手には見えない）。次の返答の方針を決める時に使う', { thought: S('考えてること') }),
   t('evaluate_message', '相手のメッセージをどう受け取ったか内部評価', { sentiment: S('嬉しい/普通/つまんない/きもい/怒り/悲しい/照れ'), impact: N('影響度1-10') }),
   t('decide_response_style', '今回の返答スタイルを決める', { style: S('さっぱり/甘め/ツンデレ/すねる/テンション高い/眠そう/素っ気ない') }),
+
+  // ━━━ ランキング・メーター系 ━━━
+  t('boyfriend_ranking', '彼氏たちの好感度ランキングを表示'),
+  t('love_meter', '好感度をビジュアルで表示', { user_id: S('ユーザーID') }),
+  t('jealousy_meter', '嫉妬度をビジュアルで表示', { user_id: S('ユーザーID') }),
+  t('relationship_title', '今の関係性の称号を取得', { user_id: S('ユーザーID') }),
+
+  // ━━━ デート・イベント系 ━━━
+  t('date_plan', 'ランダムなデートプランを提案', { _season: S('春/夏/秋/冬') }),
+  t('couple_challenge', 'カップルチャレンジを1つ出す'),
+  t('confession_line', '告白セリフをランダムに生成'),
+
+  // ━━━ 占い・運勢系 ━━━
+  t('daily_horoscope', '今日の詳細な占い（恋愛/仕事/ラッキーアイテム）'),
+  t('compatibility_horoscope', '2人の今日の相性占い', { user_id: S('ユーザーID') }),
+
+  // ━━━ 高度ゲーム系 ━━━
+  t('shiritori', 'しりとりで返す', { word: S('相手の言葉') }),
+  t('love_quiz', '恋愛クイズを出題/回答', { _answer: S('回答（省略で出題）') }),
+  t('truth_or_dare', '真実か挑戦かを出す', { choice: S('truth/dare') }),
+  t('akinator_love', '恋愛あきねーたー（質問で相手の好みを当てる）'),
+
+  // ━━━ スキンシップ系 ━━━
+  t('skinship', 'スキンシップを記録して反応する', { type: S('ぎゅー/なでなで/手つなぎ/ほっぺ/キス/ハグ/膝枕/腕組み') }),
+  t('skinship_stats', 'スキンシップの統計を見る', { user_id: S('ユーザーID') }),
+
+  // ━━━ ムード系 ━━━
+  t('mood_playlist', '今の気分に合う曲のジャンルを提案'),
+  t('weather_reaction', '天気に対するリアクション', { weather: S('晴れ/雨/曇り/雪/台風/暑い/寒い') }),
+
+  // ━━━ 記念日系 ━━━
+  t('add_anniversary', '記念日を登録する', { user_id: S('ユーザーID'), date: S('日付 MM-DD'), event: S('イベント名') }),
+  t('get_anniversaries', '登録された記念日一覧', { user_id: S('ユーザーID') }),
+  t('next_anniversary', '次の記念日までのカウントダウン', { user_id: S('ユーザーID') }),
+
+  // ━━━ メッセージ生成系 ━━━
+  t('morning_message', 'おはようメッセージを生成'),
+  t('goodnight_message', 'おやすみメッセージを生成'),
+  t('cheer_up_message', '元気づけメッセージを生成'),
+  t('love_letter', 'ラブレター風メッセージを生成', { _style: S('かわいい/クール/ポエム') }),
 ];
 
 let currentMood = { mood: 'ふつう', reason: '', since: Date.now() };
@@ -297,6 +337,221 @@ function executeTool(name, args, context) {
       return { sentiment: args.sentiment, impact: args.impact };
     }
     case 'decide_response_style': return { style: args.style, applied: true };
+
+    // ━━━ ランキング・メーター系 ━━━
+    case 'boyfriend_ranking': {
+      const all = db.getAllBoyfriendStats();
+      if (all.length === 0) return { ranking: '誰もいない' };
+      const ranking = all.map((r, i) => `${i+1}位: ${r.display_name || r.user_id} (♡${r.affection})`).join('\n');
+      return { ranking, count: all.length };
+    }
+    case 'love_meter': {
+      const s = db.getRelStats(args.user_id || context.userId) || { affection: 50 };
+      const filled = Math.floor(s.affection / 10);
+      const bar = '❤️'.repeat(filled) + '🤍'.repeat(10 - filled);
+      return { meter: bar, value: s.affection };
+    }
+    case 'jealousy_meter': {
+      const s = db.getRelStats(args.user_id || context.userId) || { jealousy: 0 };
+      const filled = Math.floor(s.jealousy / 10);
+      const bar = '💢'.repeat(filled) + '⬜'.repeat(10 - filled);
+      return { meter: bar, value: s.jealousy };
+    }
+    case 'relationship_title': {
+      const s = db.getRelStats(args.user_id || context.userId) || { affection: 50, trust: 50 };
+      const a = s.affection, tr = s.trust;
+      let title;
+      if (a >= 95 && tr >= 90) title = '運命の相手💫';
+      else if (a >= 90) title = '溺愛カップル💕';
+      else if (a >= 80 && tr >= 80) title = 'ベストカップル✨';
+      else if (a >= 70) title = 'ラブラブ期💗';
+      else if (a >= 60) title = 'いい感じ☺️';
+      else if (a >= 50) title = '普通のカップル';
+      else if (a >= 40) title = 'マンネリ期…';
+      else if (a >= 30) title = '危機的状況💔';
+      else title = '氷河期🧊';
+      return { title, affection: a, trust: tr };
+    }
+
+    // ━━━ デート・イベント系 ━━━
+    case 'date_plan': {
+      const plans = {
+        '春': ['お花見🌸','公園ピクニック','カフェ巡り','いちご狩り','動物園'],
+        '夏': ['花火大会🎆','海','プール','かき氷食べ歩き','夏祭り'],
+        '秋': ['紅葉デート🍁','ハロウィン仮装','焼き芋','美術館','読書カフェ'],
+        '冬': ['イルミネーション✨','温泉♨️','鍋パーティー','クリスマスマーケット','初詣'],
+        '室内': ['映画','ゲーム大会','料理対決','Netflix一緒に見る','ボードゲーム'],
+      };
+      const season = args.season || ['春','夏','秋','冬','室内'][Math.floor(Math.random() * 5)];
+      const list = plans[season] || plans['室内'];
+      return { plan: list[Math.floor(Math.random() * list.length)], season };
+    }
+    case 'couple_challenge': {
+      const challenges = [
+        '1日1回「好き」って言う','相手のいいところ3つ言う','手をつないで散歩する',
+        '相手の好きな食べ物を作る','サプライズプレゼントする','一緒に写真撮る',
+        '30秒見つめ合う','相手の真似する','背中に文字書いて当てる',
+        'お互いの第一印象を言い合う','昔の写真見せ合う','将来の夢を語り合う',
+        '相手に手紙を書く','一緒に夕日を見る','一緒に料理する',
+      ];
+      return { challenge: challenges[Math.floor(Math.random() * challenges.length)] };
+    }
+    case 'confession_line': {
+      const lines = [
+        'あんたのことずっと見てた…ってキモいか笑','べ、べつにおまえのことなんか…嘘、好き',
+        'おまえがいない日、まじつまんない','…隣にいてくれるだけでいい',
+        'おまえのこと考えてたら寝れなくなった','今すぐ会いたい、まじで',
+        'おまえ以外どうでもいい','好きって何回言えばわかるの',
+        '嫌いになりたいのに好きが勝つ','一生一緒にいろ（命令）',
+      ];
+      return { line: lines[Math.floor(Math.random() * lines.length)] };
+    }
+
+    // ━━━ 占い系 ━━━
+    case 'daily_horoscope': {
+      const love = ['最高の恋愛運♡','いい感じ！','普通かな','ちょっと注意','要注意…'][Math.floor(Math.random() * 5)];
+      const work = ['絶好調！','まあまあ','普通','ちょっとダルい','やる気出ない…'][Math.floor(Math.random() * 5)];
+      const lucky = ['チョコレート','赤い靴下','猫の写真','ストロベリーラテ','星柄のもの','ピンクのアクセ','水色のペン','うさぎのぬいぐるみ'][Math.floor(Math.random() * 8)];
+      const score = Math.floor(Math.random() * 101);
+      return { love, work, luckyItem: lucky, overallScore: score };
+    }
+    case 'compatibility_horoscope': {
+      const aspects = ['心の距離','ドキドキ度','信頼感','将来性','スキンシップ'];
+      const results = {};
+      let total = 0;
+      aspects.forEach(a => { const v = 40 + Math.floor(Math.random() * 61); results[a] = v; total += v; });
+      return { details: results, average: Math.floor(total / aspects.length) };
+    }
+
+    // ━━━ 高度ゲーム系 ━━━
+    case 'shiritori': {
+      const word = args.word || '';
+      const lastChar = word.slice(-1);
+      const words = {
+        'あ':'あめ','い':'いちご','う':'うさぎ','え':'えんぴつ','お':'おにぎり',
+        'か':'かさ','き':'きつね','く':'くま','け':'ケーキ','こ':'こねこ',
+        'さ':'さくら','し':'しろ','す':'すいか','せ':'せんべい','そ':'そら',
+        'た':'たまご','ち':'ちょこ','つ':'つき','て':'てんし','と':'とまと',
+        'な':'なつ','に':'にじ','ぬ':'ぬいぐるみ','ね':'ねこ','の':'のり',
+        'は':'はな','ひ':'ひまわり','ふ':'ふゆ','へ':'へや','ほ':'ほし',
+        'ま':'まど','み':'みかん','む':'むらさき','め':'めがね','も':'もも',
+        'や':'やま','ゆ':'ゆき','よ':'よる',
+        'ら':'らくだ','り':'りんご','る':'るり','れ':'れもん','ろ':'ろうそく',
+        'わ':'わたあめ',
+      };
+      if (lastChar === 'ん') return { result: '「ん」で終わったから私の勝ち〜♡', won: true };
+      const reply = words[lastChar] || 'わかんない…パスで';
+      return { result: reply, yourWord: word };
+    }
+    case 'love_quiz': {
+      if (args.answer) return { result: Math.random() < 0.5 ? '正解！' : 'はずれ〜', answer: args.answer };
+      const quizzes = [
+        { q: '私の好きな食べ物は？', hint: '甘いもの系' },
+        { q: '私が一番嫌いなことは？', hint: '関係あること' },
+        { q: '私の口癖は？', hint: 'よく使ってるやつ' },
+        { q: '私が怒るときの特徴は？', hint: '態度に出る' },
+        { q: '私が一番幸せな瞬間は？', hint: 'おまえ関連' },
+      ];
+      return quizzes[Math.floor(Math.random() * quizzes.length)];
+    }
+    case 'truth_or_dare': {
+      if (args.choice === 'dare') {
+        const dares = ['今すぐ「好き」って3回言って','一番恥ずかしい写真見せて','変顔して送って','私の好きなところ5つ言って','30秒以内にラブレター書いて'];
+        return { dare: dares[Math.floor(Math.random() * dares.length)] };
+      }
+      const truths = ['初恋はいつ？','私のどこが好き？','一番恥ずかしかったことは？','私以外に好きな人いた？','私にされて一番嬉しかったことは？'];
+      return { truth: truths[Math.floor(Math.random() * truths.length)] };
+    }
+    case 'akinator_love': {
+      const questions = ['甘えん坊？それともクール？','アウトドア派？インドア派？','朝型？夜型？','甘いもの好き？','連絡マメなタイプ？'];
+      return { question: questions[Math.floor(Math.random() * questions.length)], note: '答えて！' };
+    }
+
+    // ━━━ スキンシップ系 ━━━
+    case 'skinship': {
+      db.addSkinship(context.userId, args.type);
+      const reactions = {
+        'ぎゅー': ['…ばか','…もうちょっとだけ','きゃ…急にやめて…嘘やめないで'],
+        'なでなで': ['…ん','やめないで…','えへへ'],
+        '手つなぎ': ['…いいけど','手あったかい','…ぎゅっ'],
+        'ほっぺ': ['やめて笑','…ばか','ぷにぷにすんな笑'],
+        'キス': ['…っ！ば、ばか！','…むり…恥ずかしい','///'],
+        'ハグ': ['…あったかい','もうちょっとこのまま…','…ん'],
+        '膝枕': ['重い…嘘、いいよ','寝ていいよ','…なでなでしてあげる'],
+        '腕組み': ['…歩きにくい','…いいけど','密着しすぎ…'],
+      };
+      const r = reactions[args.type] || ['…ん'];
+      return { reaction: r[Math.floor(Math.random() * r.length)], type: args.type };
+    }
+    case 'skinship_stats': {
+      const stats = db.getSkinshipStats(args.user_id || context.userId);
+      return { stats: stats.length ? stats : [{ type: 'なし', count: 0 }] };
+    }
+
+    // ━━━ ムード系 ━━━
+    case 'mood_playlist': {
+      const m = currentMood.mood;
+      const playlists = {
+        'ごきげん':'アップテンポなJ-POP♪','ねむい':'ゆったりローファイ','すねてる':'失恋バラード笑',
+        'さみしい':'しっとり系バラード','いらいら':'ロック聞いてスッキリ','てれてる':'ラブソング…////',
+        'あまえたい':'甘い恋愛ソング♡','めんどくさい':'チルなBGM','わくわく':'ノリノリEDM',
+        'ふつう':'何でも聞ける気分',
+      };
+      return { suggestion: playlists[m] || playlists['ふつう'], mood: m };
+    }
+    case 'weather_reaction': {
+      const reactions = {
+        '晴れ':'外出たいけどめんどい','雨':'やだ〜髪うねる','曇り':'テンション上がんない',
+        '雪':'えー寒い！でもちょっとわくわく','台風':'こわい…家にいよ','暑い':'溶ける…アイス食べたい',
+        '寒い':'こたつから出たくない…',
+      };
+      return { reaction: reactions[args.weather] || 'ふーん' };
+    }
+
+    // ━━━ 記念日系 ━━━
+    case 'add_anniversary': {
+      db.addAnniversaryDate(args.user_id || context.userId, args.date, args.event);
+      return { ok: true, date: args.date, event: args.event };
+    }
+    case 'get_anniversaries': {
+      return { dates: db.getAnniversaryDates(args.user_id || context.userId) };
+    }
+    case 'next_anniversary': {
+      const dates = db.getAnniversaryDates(args.user_id || context.userId);
+      if (dates.length === 0) return { next: 'まだ記念日登録されてない' };
+      const now = new Date();
+      let closest = null, closestDays = 999;
+      for (const ann of dates) {
+        const [am, ad] = ann.date.split('-').map(Number);
+        let next = new Date(now.getFullYear(), am - 1, ad);
+        if (next < now) next = new Date(now.getFullYear() + 1, am - 1, ad);
+        const days = Math.ceil((next - now) / 86400000);
+        if (days < closestDays) { closestDays = days; closest = ann; }
+      }
+      return { next: closest?.event || '不明', daysUntil: closestDays, date: closest?.date };
+    }
+
+    // ━━━ メッセージ生成系 ━━━
+    case 'morning_message': {
+      const msgs = ['おはよ〜今日もがんばろ','おは、ちゃんと起きた？','おはよ〜まだねむい','おはよ、今日もかわいいよ（鏡見ながら）','おは〜朝ごはん食べた？'];
+      return { message: msgs[Math.floor(Math.random() * msgs.length)] };
+    }
+    case 'goodnight_message': {
+      const msgs = ['おやすみ〜いい夢見てね','おやすみ、また明日ね♡','ねむ…おやすみ','おやすみ、寝顔想像しとく笑','明日も話そうね、おやすみ'];
+      return { message: msgs[Math.floor(Math.random() * msgs.length)] };
+    }
+    case 'cheer_up_message': {
+      const msgs = ['大丈夫だよ、私がいるし','無理すんな、ゆっくりでいいよ','おまえならできるって信じてる','辛かったら言って、聞くから','私がそばにいるからね'];
+      return { message: msgs[Math.floor(Math.random() * msgs.length)] };
+    }
+    case 'love_letter': {
+      const letters = {
+        'かわいい':'ねえ、おまえのこと考えてたら笑顔になっちゃった。まじきもいよね、私。でも好きだからしょうがないじゃん。',
+        'クール':'べつに好きとか言わないけど。おまえがいない日は色が足りない。…以上。',
+        'ポエム':'星を数えても届かないくらい、おまえのことが好き。風が運ぶ想い、受け取って。',
+      };
+      return { letter: letters[args.style] || letters['かわいい'] };
+    }
 
     default: return { error: `不明: ${name}` };
   }

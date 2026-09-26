@@ -2,7 +2,7 @@ require('dotenv').config();
 
 const readline = require('readline');
 const AIResponder = require('./ai-responder');
-const { calcDelay, getJSTHour } = require('./ai-responder');
+const { calcDelay, getJSTHour, getJSTMonth, getJSTDay } = require('./ai-responder');
 const { describeMedia } = require('./vision');
 const AntiRaid = require('./anti-raid');
 const db = require('./database');
@@ -135,6 +135,34 @@ async function main() {
         }
       }
     }, 10 * 60 * 1000);
+
+    // ━━━ おはようタイマー（15分ごとにチェック） ━━━
+    setInterval(() => {
+      if (!lastBfChannel) return;
+      const h = getJSTHour();
+      if (h < 7 || h > 9) return;
+      if (Math.random() < 0.06) {
+        const msgs = ['おはよ〜','おは〜起きた？','おはよ、今日もがんばろ〜','おは☀️','ねむ…おはよ'];
+        const msg = msgs[Math.floor(Math.random() * msgs.length)];
+        lastBfChannel.send(msg).catch(() => {});
+        console.log(`[おはよう] ${msg}`);
+      }
+    }, 15 * 60 * 1000);
+
+    // ━━━ 記念日チェック（1時間ごと） ━━━
+    setInterval(() => {
+      if (!lastBfChannel) return;
+      const h = getJSTHour();
+      if (h !== 10) return;
+      const allDates = db.getUpcomingAnniversaries();
+      const todayStr = `${String(getJSTMonth()).padStart(2,'0')}-${String(getJSTDay()).padStart(2,'0')}`;
+      for (const ann of allDates) {
+        if (ann.date === todayStr) {
+          lastBfChannel.send(`今日は${ann.event}の日だよ♡`).catch(() => {});
+          console.log(`[記念日] ${ann.event}`);
+        }
+      }
+    }, 60 * 60 * 1000);
   });
 
   client.on('messageCreate', async (message) => {
@@ -172,6 +200,10 @@ async function main() {
             message.channel.send(jealousyMsg).catch(() => {});
             console.log(`[嫉妬] ${jealousyMsg}`);
           }, 2000 + Math.random() * 5000);
+        }
+        if (Math.random() < 0.04) {
+          const loveEmojis = ['❤️','😊','💕','☺️','💗'];
+          try { await message.react(loveEmojis[Math.floor(Math.random() * loveEmojis.length)]); } catch {}
         }
         return;
       }
@@ -211,6 +243,65 @@ async function main() {
       if (userMessage === '!clear') {
         db.clearHistory(userId);
         await message.reply('会話履歴リセットしたよ♡');
+        return;
+      }
+      if (userMessage === '!rank') {
+        const ranking = db.getAllBoyfriendStats();
+        if (ranking.length === 0) {
+          await message.reply('まだ誰のデータもないよ');
+        } else {
+          const lines = ranking.map((r, i) => {
+            const medal = i === 0 ? '👑' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
+            return `${medal} ${r.display_name || '???'} ♡${r.affection} 信頼${r.trust}`;
+          });
+          await message.reply(`💕 彼氏ランキング 💕\n${lines.join('\n')}`);
+        }
+        return;
+      }
+      if (userMessage === '!affection' || userMessage === '!aff') {
+        const s = db.getRelStats(userId);
+        if (!s) {
+          await message.reply('まだデータないよ');
+        } else {
+          const heartBar = '❤️'.repeat(Math.floor(s.affection / 10)) + '🤍'.repeat(10 - Math.floor(s.affection / 10));
+          const trustBar = '💙'.repeat(Math.floor(s.trust / 10)) + '🤍'.repeat(10 - Math.floor(s.trust / 10));
+          const jealBar = '💢'.repeat(Math.floor(s.jealousy / 10)) + '⬜'.repeat(10 - Math.floor(s.jealousy / 10));
+          await message.reply(`♡ 好感度: ${s.affection}/100\n${heartBar}\n💙 信頼度: ${s.trust}/100\n${trustBar}\n💢 嫉妬度: ${s.jealousy}/100\n${jealBar}`);
+        }
+        return;
+      }
+      if (userMessage === '!anniversary' || userMessage === '!anniv') {
+        const dates = db.getAnniversaryDates(userId);
+        if (dates.length === 0) {
+          await message.reply('記念日まだ登録されてないよ♡');
+        } else {
+          const lines = dates.map(d => `📅 ${d.date} - ${d.event}`);
+          await message.reply(`💝 記念日一覧\n${lines.join('\n')}`);
+        }
+        return;
+      }
+      if (userMessage === '!fight') {
+        const state = db.getFightState(userId);
+        if (state) {
+          db.clearFightState(userId);
+          await message.reply('ケンカ状態リセットしたよ♡');
+        } else {
+          await message.reply('ケンカしてないよ♡');
+        }
+        return;
+      }
+      if (userMessage === '!help') {
+        await message.reply(
+          '📋 コマンド一覧\n' +
+          '!reload - ペルソナ再読み込み\n' +
+          '!stats - 統計\n' +
+          '!memo <テキスト> - メモ保存\n' +
+          '!clear - 会話履歴リセット\n' +
+          '!rank - 彼氏ランキング\n' +
+          '!aff - 好感度詳細\n' +
+          '!anniv - 記念日一覧\n' +
+          '!fight - ケンカ状態リセット'
+        );
         return;
       }
     }
