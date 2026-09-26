@@ -10,7 +10,8 @@ const { loadEncryptedToken, hasEncryptedTokens } = require('./token-manager');
 
 const config = {
   tokenMode: process.env.TOKEN_MODE || 'bot',
-  boyfriendId: process.env.BOYFRIEND_USER_ID || '1486923873004945509',
+  boyfriendIds: (process.env.BOYFRIEND_USER_IDS || process.env.BOYFRIEND_USER_ID || '1486923873004945509')
+    .split(',').map(k => k.trim()).filter(Boolean),
   groqApiKeys: (process.env.GROQ_API_KEY || '').split(',').map(k => k.trim()).filter(Boolean),
   aiModel: process.env.AI_MODEL || 'qwen/qwen3.8-27b',
   geminiApiKey: process.env.GEMINI_API_KEY || '',
@@ -79,7 +80,7 @@ async function main() {
   const isUserToken = config.tokenMode === 'user';
 
   console.log(`📌 モード: ${isUserToken ? 'User Token' : 'Bot Token'}`);
-  console.log(`💕 パートナーID: ${config.boyfriendId}`);
+  console.log(`💕 パートナーID: ${config.boyfriendIds.join(', ')}（${config.boyfriendIds.length}人）`);
   console.log(`🧠 AIモデル: ${config.aiModel}`);
   console.log(`🔑 APIキー: ${config.groqApiKeys.length}個`);
   console.log(`👁️ Vision: ${config.geminiApiKey ? 'Gemini Flash ON' : 'OFF（GEMINI_API_KEYで有効化）'}`);
@@ -89,7 +90,7 @@ async function main() {
   const ai = new AIResponder({
     groqApiKeys: config.groqApiKeys,
     aiModel: config.aiModel,
-    boyfriendId: config.boyfriendId,
+    boyfriendIds: config.boyfriendIds,
   });
 
   const antiRaid = new AntiRaid({
@@ -141,7 +142,7 @@ async function main() {
     if (message.author.bot && !isUserToken) return;
 
     const userId = message.author.id;
-    const isBoyfriend = userId === config.boyfriendId;
+    const isBoyfriend = config.boyfriendIds.includes(userId);
 
     const isMentioned = message.content.includes(`<@${client.user.id}>`)
       || message.content.includes(`<@!${client.user.id}>`)

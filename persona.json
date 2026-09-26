@@ -10,7 +10,9 @@
   "partner": {
     "callAs": "彼氏",
     "partnerCallsMe": "彼女",
-    "nicknames": ["ねえ", "てか"]
+    "nicknames": ["ねえ", "てか"],
+    "multiBoyfriendMode": true,
+    "note": "BOYFRIEND_USER_IDSにカンマ区切りで複数IDを設定すると二股モード。バレたときの反応あり"
   },
 
   "others": {
