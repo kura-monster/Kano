@@ -247,6 +247,19 @@ const LOVE_EXAMPLES = [
   ['今日もかわいいね','…急に言わないで'],['大事にするね','…うん'],
   ['ずっと好きだからね','…わかってるし'],['幸せ','…私も、かも'],
   ['一番大事だよ','…知ってる'],['守るから','…はいはい（嬉しい）'],
+
+  // ── 名前・呼び方 ──
+  ['俺の名前呼んで','え〜…○○、…これでいい？'],['名前で呼んでよ','○○…はずい'],
+  ['名前呼んで','○○〜、…満足？笑'],['いいから呼んで','もう、○○、ほら'],
+  ['呼び捨てにして','○○。…これでいいの？'],['なんて呼んでる？','ん〜、○○って呼んでるけど'],
+  ['俺のことなんだと思ってる？','は？彼氏に決まってるじゃん'],['彼女って呼んで','…え、急にどした笑'],
+
+  // ── お願い・要求への応答 ──
+  ['写真送って','え〜やだ笑'],['声聞きたい','えー恥ずかしいし'],
+  ['褒めて','えーなんで。…がんばってるじゃん'],['慰めて','どしたの？'],
+  ['構って','ん〜、いいよ何する？'],['甘えていい？','…いいよ'],
+  ['話聞いて','うん、なに？'],['相談がある','え、何どうしたの'],
+  ['怒らないで','怒ってないし…なに？'],['嫌いにならないで','なるわけないじゃん'],
 ];
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -806,10 +819,10 @@ function cleanResponse(text, isBoyfriend, isCaughtMode = false) {
     return l;
   }).join('\n');
   const lines = r.trim().split('\n').filter(l => l.trim());
-  const maxLines = isCaughtMode ? 4 : 3;
+  const maxLines = isCaughtMode ? 4 : (isBoyfriend ? 4 : 3);
   r = lines.slice(0, maxLines).join('\n').trim();
-  const softMax = isCaughtMode ? 80 : (isBoyfriend ? 50 : 30);
-  const hardMax = isCaughtMode ? 120 : (isBoyfriend ? 80 : 50);
+  const softMax = isCaughtMode ? 100 : (isBoyfriend ? 70 : 35);
+  const hardMax = isCaughtMode ? 150 : (isBoyfriend ? 100 : 55);
   if (r.length > softMax) {
     const period = r.indexOf('。');
     if (period >= 4 && period < hardMax) {
@@ -855,9 +868,12 @@ function buildLovePrompt(persona, extraCtx) {
 
   const exs = pickRandom(LOVE_EXAMPLES, 22).map(([q,a]) => `「${q}」→「${a}」`).join('\n');
 
+  const bfName = extraCtx.displayName || '';
+  const bfNameLine = bfName ? `\n相手の名前は「${bfName}」。名前で呼んでって言われたら「${bfName}」を使え。会話例の「○○」は「${bfName}」に置き換えろ。` : '';
+
   let prompt = `/no_think
 あなた=${identity.name}、${identity.age}の${identity.gender}。${identity.description}
-${partner.callAs}とDiscordで付き合ってて、LINEみたいに普通にチャットしてる彼女。
+${partner.callAs}とDiscordで付き合ってて、LINEみたいに普通にチャットしてる彼女。${bfNameLine}
 
 ■ ${identity.name}ってこういう子
 ${loveMode.personality.map(p => '・' + rp(p)).join('\n')}
@@ -874,12 +890,14 @@ ${loveMode.personality.map(p => '・' + rp(p)).join('\n')}
 例: ×「そうだな」→○「そうだね」 ×「知らんな」→○「知らんし」 ×「行くか」→○「行こっか」
 
 ■ 鉄則（絶対守れ）
-・1回の返事は自然な長さで。5〜40文字が理想。最大でも70文字
+・1回の返事は自然な長さで。8〜60文字が理想。最大でも90文字
 ・分析とか解説とかいらない。感想や反応だけ返せ
-・相手が言ったことにだけ反応。自分から話題足すな
+・相手が言ったことにちゃんと応える。お願いや質問には答える
 ・LINEの1通みたいに返せ。論文みたいな長文禁止
 ・相手が何も言ってなかったら「なに？」「ん？」だけでいい
-・同じ返答を2回連続でしない。バリエーション出せ`;
+・同じ返答を2回連続でしない。バリエーション出せ
+・「は？」だけの返事は禁止。もうちょっと言葉足せ
+・相手の会話の流れをちゃんと読んで、前のやりとりを踏まえて返せ`;
 
   if (extraCtx.userMood && extraCtx.userMood !== 'neutral') {
     const m = { sad:'落ち込んでる→いつもより優しく寄り添って', angry:'怒ってるっぽい→落ち着かせて', happy:'嬉しそう→一緒にテンション上げて', lovey:'甘えモード→素直になりすぎず受け止めて', tired:'疲れてる→労って', suspicious:'浮気を疑ってる→焦りつつも否定して' };
@@ -1136,9 +1154,14 @@ class AIResponder {
       (a.contentType || '').startsWith('image/') || /\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i.test(a.name || '') || a.contentType === 'image/embed'
     );
 
+    const userInfo = db.getUser(userId);
+    const displayName = userInfo?.display_name || username || '';
+    const recentTopics = isBoyfriend ? db.getRecentTopics(userId, 3) : [];
+
     const extraCtx = {
       userMood, sleepyLevel: sleep.sleepyLevel, hasImage, mediaDescription, cheatingEvidence,
       sweetMode, lateNightSweet, fightMode, affectionBehavior, affectionLevel,
+      displayName, recentTopics,
     };
 
     let systemPrompt;
@@ -1167,9 +1190,10 @@ class AIResponder {
     const relStats = db.getRelStats(userId);
     if (relStats && isBoyfriend) ctx.push(`好感${relStats.affection}`);
     if (cheatingMode) ctx.push('⚠二股バレ警戒中');
+    if (displayName && isBoyfriend) ctx.push(`相手:${displayName}`);
     if (ctx.length > 0) systemPrompt += `\n[${ctx.join('|')}]`;
 
-    const history = db.getRecentHistory(userId, isBoyfriend ? 12 : 6);
+    const history = db.getRecentHistory(userId, isBoyfriend ? 16 : 6);
     const tools = cheatingMode ? undefined : selectTools(analysis, isBoyfriend);
 
     const messages = [
