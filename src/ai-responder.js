@@ -800,7 +800,8 @@ function cleanResponse(text, isBoyfriend, isCaughtMode = false, bfName = '') {
   r = r.replace(/<think>[\s\S]*?<\/think>/g, '');
   r = r.replace(/<think>[\s\S]*/g, '');
   r = r.replace(/^「|」$/g, '');
-  r = r.replace(/^\*[^*]*\*\s*/g, '');
+  r = r.replace(/^\*[^*]*\*\s*/gm, '');
+  r = r.replace(/\*[^*]+\*/g, '');
   r = r.replace(/^(#{1,3}\s|[-*]\s)/gm, '');
 
   // [名前]系プレースホルダーを強制置換
@@ -814,17 +815,16 @@ function cleanResponse(text, isBoyfriend, isCaughtMode = false, bfName = '') {
   r = r.replace(/〇〇/g, nameReplace);
   r = r.replace(/＊＊/g, nameReplace);
   r = r.replace(/\*\*名前\*\*/g, nameReplace);
+  r = r.replace(/名前さん/g, nameReplace);
 
-  r = r.split('\n').map(line => {
-    let l = line.trim();
-
+  const fixLine = (l) => {
     // ── 語尾：男言葉→女言葉 ──
     l = l.replace(/だな[。]?$/g, 'だし');
-    l = l.replace(/だろ[。]?$/g, 'でしょ');
+    l = l.replace(/だろ[。？?]?$/g, 'でしょ');
     l = l.replace(/だぞ[。]?$/g, 'だよ');
-    l = l.replace(/だろう[。]?$/g, 'でしょ');
+    l = l.replace(/だろう[。？?]?$/g, 'でしょ');
     l = l.replace(/ないな[。]?$/g, 'ないし');
-    l = l.replace(/するか[。]?$/g, 'しよっか');
+    l = l.replace(/するか[。？?]?$/g, 'しよっか');
     l = l.replace(/かよ[。]?$/g, 'なんだけど');
     l = l.replace(/ぜ[。]?$/g, 'よ');
     l = l.replace(/ぞ[。]?$/g, 'よ');
@@ -843,51 +843,97 @@ function cleanResponse(text, isBoyfriend, isCaughtMode = false, bfName = '') {
     l = l.replace(/行くぞ/g, '行くよ');
     l = l.replace(/やるぞ/g, 'やるよ');
     l = l.replace(/食うか/g, '食べよっか');
+    l = l.replace(/食った/g, '食べた');
+    l = l.replace(/食って/g, '食べて');
     l = l.replace(/食う/g, '食べる');
     l = l.replace(/うめえ/g, 'おいしい');
-    l = l.replace(/まずい/g, 'おいしくない');
     l = l.replace(/すげえ/g, 'すごい');
+    l = l.replace(/すげー/g, 'すごー');
     l = l.replace(/やべえ/g, 'やばい');
+    l = l.replace(/やべー/g, 'やばー');
     l = l.replace(/つええ/g, 'つよい');
     l = l.replace(/でけえ/g, 'でかい');
     l = l.replace(/はええ/g, 'はやい');
+    l = l.replace(/ヤバい/g, 'やばい');
 
-    // ── 一人称：男→女 ──
+    // ── 一人称：男→女（全パターン） ──
+    l = l.replace(/俺([はがもをのにとだ])/g, '私$1');
+    l = l.replace(/^俺$/g, '私');
+    l = l.replace(/^俺、/g, '私、');
     l = l.replace(/^俺/g, '私');
+    l = l.replace(/僕([はがもをのにとだ])/g, '私$1');
     l = l.replace(/^僕/g, '私');
-    l = l.replace(/俺は/g, '私は');
-    l = l.replace(/俺が/g, '私が');
-    l = l.replace(/俺も/g, '私も');
-    l = l.replace(/俺の/g, '私の');
-    l = l.replace(/僕は/g, '私は');
-    l = l.replace(/僕が/g, '私が');
-    l = l.replace(/僕も/g, '私も');
 
-    // ── 不自然な敬語・硬い表現 ──
+    // ── 二人称：乱暴→普通 ──
+    l = l.replace(/てめえ/g, 'あんた');
+    l = l.replace(/テメエ/g, 'あんた');
+    l = l.replace(/貴様/g, 'あんた');
+    l = l.replace(/おめえ/g, 'あんた');
+
+    // ── 不自然な敬語・硬い表現→カジュアル ──
+    l = l.replace(/でございます/g, 'だよ');
     l = l.replace(/ございます/g, 'だよ');
     l = l.replace(/いたします/g, 'する');
-    l = l.replace(/でございます/g, 'だよ');
     l = l.replace(/承知しました/g, 'わかった');
+    l = l.replace(/承知です/g, 'わかった');
     l = l.replace(/かしこまりました/g, 'わかった');
     l = l.replace(/申し訳ありません/g, 'ごめん');
     l = l.replace(/申し訳ない/g, 'ごめんね');
     l = l.replace(/存じます/g, '思う');
-    l = l.replace(/ですね[。]?$/g, 'だね');
-    l = l.replace(/ですよ[。]?$/g, 'だよ');
-    l = l.replace(/ますね[。]?$/g, 'るね');
     l = l.replace(/しましょう/g, 'しよっか');
     l = l.replace(/いかがでしょうか/g, 'どう？');
     l = l.replace(/よろしいでしょうか/g, 'いい？');
-    l = l.replace(/と思います[。]?$/g, 'と思う');
     l = l.replace(/ではないでしょうか/g, 'じゃない？');
+    l = l.replace(/と思います/g, 'と思う');
+    l = l.replace(/ですけれども/g, 'だけど');
+    l = l.replace(/ですけど/g, 'だけど');
+    l = l.replace(/ですが/g, 'だけど');
+    l = l.replace(/ですので/g, 'だから');
+    l = l.replace(/ですから/g, 'だから');
+    l = l.replace(/ですよね/g, 'だよね');
+    l = l.replace(/ですね[。]?$/g, 'だね');
+    l = l.replace(/ですよ[。]?$/g, 'だよ');
+    l = l.replace(/ですか[。？?]?$/g, 'なの？');
+    l = l.replace(/ますか[。？?]?$/g, 'るの？');
+    l = l.replace(/ません[。]?$/g, 'ないよ');
+    l = l.replace(/ますね[。]?$/g, 'るね');
+    l = l.replace(/ますよ[。]?$/g, 'るよ');
+    l = l.replace(/ました[。]?$/g, 'たよ');
+    l = l.replace(/ます[。]?$/g, 'る');
+    l = l.replace(/です[。]?$/g, 'だよ');
 
-    // ── AI的な表現を除去 ──
-    l = l.replace(/^(はい、?|えーと、?|そうですね、?|なるほど、?)/g, '');
+    // ── AI的・説明的な表現を除去 ──
+    l = l.replace(/^(はい、?|えーと、?|そうですね、?|なるほど、?|確かに、?)/g, '');
+    l = l.replace(/^(ええ、|ふむ、|あの、|すみません、?|ありがとうございます、?)/g, '');
+    l = l.replace(/という(こと|わけ|意味)です/g, 'ってこと');
+    l = l.replace(/のではないかと/g, 'かも');
+    l = l.replace(/と考えられます/g, 'かも');
+    l = l.replace(/理解しました/g, 'わかった');
+    l = l.replace(/了解しました/g, 'わかった');
+    l = l.replace(/了解です/g, 'おっけー');
 
     return l;
-  }).join('\n');
-  const lines = r.trim().split('\n').filter(l => l.trim());
-  const maxLines = isCaughtMode ? 4 : (isBoyfriend ? 4 : 3);
+  };
+
+  // 行ごとに修正
+  let lines = r.split('\n').map(l => fixLine(l.trim())).filter(l => l);
+
+  // 名前だけの行を次の行にマージ
+  if (bfName && lines.length > 1) {
+    const merged = [];
+    for (let i = 0; i < lines.length; i++) {
+      const stripped = lines[i].replace(/[、。！？…〜♡☆★\s]/g, '');
+      if (stripped === bfName && i + 1 < lines.length) {
+        merged.push(lines[i] + '、' + lines[i + 1]);
+        i++;
+      } else {
+        merged.push(lines[i]);
+      }
+    }
+    lines = merged;
+  }
+
+  const maxLines = isCaughtMode ? 4 : (isBoyfriend ? 3 : 2);
   r = lines.slice(0, maxLines).join('\n').trim();
   const softMax = isCaughtMode ? 100 : (isBoyfriend ? 70 : 35);
   const hardMax = isCaughtMode ? 150 : (isBoyfriend ? 100 : 55);
@@ -905,6 +951,11 @@ function cleanResponse(text, isBoyfriend, isCaughtMode = false, bfName = '') {
     }
   }
   r = r.replace(/、$/g, '');
+  r = r.replace(/^、/g, '');
+
+  // 最終チェック：残ったプレースホルダーを除去
+  r = r.replace(/\[.*?名前.*?\]/g, nameReplace);
+
   if (!r) r = isBoyfriend ? 'ん？' : '…';
   return r;
 }
