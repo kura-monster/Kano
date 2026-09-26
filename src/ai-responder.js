@@ -795,15 +795,30 @@ function getTimeContext() {
 }
 
 // ━━━ レスポンス整形 ━━━
-function cleanResponse(text, isBoyfriend, isCaughtMode = false) {
+function cleanResponse(text, isBoyfriend, isCaughtMode = false, bfName = '') {
   let r = text || '';
   r = r.replace(/<think>[\s\S]*?<\/think>/g, '');
   r = r.replace(/<think>[\s\S]*/g, '');
   r = r.replace(/^「|」$/g, '');
   r = r.replace(/^\*[^*]*\*\s*/g, '');
   r = r.replace(/^(#{1,3}\s|[-*]\s)/gm, '');
+
+  // [名前]系プレースホルダーを強制置換
+  const nameReplace = bfName || 'ねえ';
+  r = r.replace(/\[名前\]/g, nameReplace);
+  r = r.replace(/【名前】/g, nameReplace);
+  r = r.replace(/\{名前\}/g, nameReplace);
+  r = r.replace(/（名前）/g, nameReplace);
+  r = r.replace(/\(名前\)/g, nameReplace);
+  r = r.replace(/○○/g, nameReplace);
+  r = r.replace(/〇〇/g, nameReplace);
+  r = r.replace(/＊＊/g, nameReplace);
+  r = r.replace(/\*\*名前\*\*/g, nameReplace);
+
   r = r.split('\n').map(line => {
     let l = line.trim();
+
+    // ── 語尾：男言葉→女言葉 ──
     l = l.replace(/だな[。]?$/g, 'だし');
     l = l.replace(/だろ[。]?$/g, 'でしょ');
     l = l.replace(/だぞ[。]?$/g, 'だよ');
@@ -814,8 +829,61 @@ function cleanResponse(text, isBoyfriend, isCaughtMode = false) {
     l = l.replace(/ぜ[。]?$/g, 'よ');
     l = l.replace(/ぞ[。]?$/g, 'よ');
     l = l.replace(/だがな[。]?$/g, 'だけどね');
+    l = l.replace(/じゃねえ/g, 'じゃない');
+    l = l.replace(/ねえよ/g, 'ないよ');
+    l = l.replace(/しろよ/g, 'しなよ');
+    l = l.replace(/やれよ/g, 'やりなよ');
+    l = l.replace(/だぜ/g, 'だよ');
+    l = l.replace(/すんな/g, 'しないで');
+    l = l.replace(/するな[。]?$/g, 'しないで');
+    l = l.replace(/くれよ/g, 'くれない？');
+    l = l.replace(/んだよな/g, 'んだよね');
+    l = l.replace(/だよな/g, 'だよね');
+    l = l.replace(/よな[。]?$/g, 'よね');
+    l = l.replace(/行くぞ/g, '行くよ');
+    l = l.replace(/やるぞ/g, 'やるよ');
+    l = l.replace(/食うか/g, '食べよっか');
+    l = l.replace(/食う/g, '食べる');
+    l = l.replace(/うめえ/g, 'おいしい');
+    l = l.replace(/まずい/g, 'おいしくない');
+    l = l.replace(/すげえ/g, 'すごい');
+    l = l.replace(/やべえ/g, 'やばい');
+    l = l.replace(/つええ/g, 'つよい');
+    l = l.replace(/でけえ/g, 'でかい');
+    l = l.replace(/はええ/g, 'はやい');
+
+    // ── 一人称：男→女 ──
     l = l.replace(/^俺/g, '私');
     l = l.replace(/^僕/g, '私');
+    l = l.replace(/俺は/g, '私は');
+    l = l.replace(/俺が/g, '私が');
+    l = l.replace(/俺も/g, '私も');
+    l = l.replace(/俺の/g, '私の');
+    l = l.replace(/僕は/g, '私は');
+    l = l.replace(/僕が/g, '私が');
+    l = l.replace(/僕も/g, '私も');
+
+    // ── 不自然な敬語・硬い表現 ──
+    l = l.replace(/ございます/g, 'だよ');
+    l = l.replace(/いたします/g, 'する');
+    l = l.replace(/でございます/g, 'だよ');
+    l = l.replace(/承知しました/g, 'わかった');
+    l = l.replace(/かしこまりました/g, 'わかった');
+    l = l.replace(/申し訳ありません/g, 'ごめん');
+    l = l.replace(/申し訳ない/g, 'ごめんね');
+    l = l.replace(/存じます/g, '思う');
+    l = l.replace(/ですね[。]?$/g, 'だね');
+    l = l.replace(/ですよ[。]?$/g, 'だよ');
+    l = l.replace(/ますね[。]?$/g, 'るね');
+    l = l.replace(/しましょう/g, 'しよっか');
+    l = l.replace(/いかがでしょうか/g, 'どう？');
+    l = l.replace(/よろしいでしょうか/g, 'いい？');
+    l = l.replace(/と思います[。]?$/g, 'と思う');
+    l = l.replace(/ではないでしょうか/g, 'じゃない？');
+
+    // ── AI的な表現を除去 ──
+    l = l.replace(/^(はい、?|えーと、?|そうですね、?|なるほど、?)/g, '');
+
     return l;
   }).join('\n');
   const lines = r.trim().split('\n').filter(l => l.trim());
@@ -888,10 +956,19 @@ ${loveMode.personality.map(p => '・' + rp(p)).join('\n')}
 
 ■ ★女の子の話し方（これが一番大事。絶対守れ）★
 あなたは17歳の女の子。男の子じゃない。女の子の口調で話せ。
-使っていい語尾: じゃん/だよ/だし/でしょ/かも/けど/よね/じゃない？/なの/って/し/の/よ/ね/かな
-絶対使うな（男言葉）: だな/だろ/だぞ/ぜ/ぞ/さ（断定）/かよ/だがな/じゃねえ/ねえよ
+使っていい語尾: じゃん/だよ/だし/でしょ/かも/けど/よね/じゃない？/なの/って/し/の/よ/ね/かな/な〜/かも/っけ
+絶対使うな: だな/だろ/だぞ/ぜ/ぞ/さ（断定）/かよ/だがな/じゃねえ/ねえよ/すんな/しろよ/くれよ/うめえ/すげえ/やべえ/食う
 一人称: 私/あたし。「俺」「僕」は絶対使うな
-例: ×「そうだな」→○「そうだね」 ×「知らんな」→○「知らんし」 ×「行くか」→○「行こっか」
+二人称: 相手は彼氏→名前で呼ぶか省略。「お前」「てめえ」「貴様」は使うな
+×「そうだな」→○「そうだね」
+×「知らんな」→○「知らんし」
+×「行くか」→○「行こっか」
+×「食うか」→○「食べよっか」
+×「すげえ」→○「すごい」「すご」
+×「やべえ」→○「やばい」「やば」
+×「うめえ」→○「おいしい」
+×「しろよ」→○「しなよ」
+×「言ったよ、満足？」→○「言ったじゃん、これでいい？」
 
 ■ 鉄則（絶対守れ）
 ・1回の返事は自然な長さで。8〜60文字が理想。最大でも90文字
@@ -901,7 +978,9 @@ ${loveMode.personality.map(p => '・' + rp(p)).join('\n')}
 ・相手が何も言ってなかったら「なに？」「ん？」だけでいい
 ・同じ返答を2回連続でしない。バリエーション出せ
 ・「は？」だけの返事は禁止。もうちょっと言葉足せ
-・相手の会話の流れをちゃんと読んで、前のやりとりを踏まえて返せ`;
+・相手の会話の流れをちゃんと読んで、前のやりとりを踏まえて返せ
+・「[名前]」「○○」「(名前)」みたいなプレースホルダーは絶対出力するな
+・敬語（です/ます/ございます）は絶対使うな`;
 
   if (extraCtx.userMood && extraCtx.userMood !== 'neutral') {
     const m = { sad:'落ち込んでる→いつもより優しく寄り添って', angry:'怒ってるっぽい→落ち着かせて', happy:'嬉しそう→一緒にテンション上げて', lovey:'甘えモード→素直になりすぎず受け止めて', tired:'疲れてる→労って', suspicious:'浮気を疑ってる→焦りつつも否定して' };
@@ -1236,7 +1315,8 @@ class AIResponder {
         msg = response.choices[0]?.message;
       }
 
-      const reply = cleanResponse(msg?.content, isBoyfriend, cheatingMode);
+      const cleanName = displayName ? (displayName.split(/[\s　💗❤️🖤💕✅⚙️🔥✨💎👑🎮🎵☠️💀🌸🌹🌷]+/)[0] || displayName) : '';
+      const reply = cleanResponse(msg?.content, isBoyfriend, cheatingMode, cleanName);
       db.addMessage(userId, channelId, 'assistant', reply);
 
       updateEmotion(userId, userMood, isBoyfriend);
