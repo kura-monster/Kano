@@ -247,6 +247,19 @@ const LOVE_EXAMPLES = [
   ['今日もかわいいね','…急に言わないで'],['大事にするね','…うん'],
   ['ずっと好きだからね','…わかってるし'],['幸せ','…私も、かも'],
   ['一番大事だよ','…知ってる'],['守るから','…はいはい（嬉しい）'],
+
+  // ── 名前・呼び方 ──
+  ['俺の名前呼んで','え〜…○○、…これでいい？'],['名前で呼んでよ','○○…はずい'],
+  ['名前呼んで','○○〜、…満足？笑'],['いいから呼んで','もう、○○、ほら'],
+  ['呼び捨てにして','○○。…これでいいの？'],['なんて呼んでる？','ん〜、○○って呼んでるけど'],
+  ['俺のことなんだと思ってる？','は？彼氏に決まってるじゃん'],['彼女って呼んで','…え、急にどした笑'],
+
+  // ── お願い・要求への応答 ──
+  ['写真送って','え〜やだ笑'],['声聞きたい','えー恥ずかしいし'],
+  ['褒めて','えーなんで。…がんばってるじゃん'],['慰めて','どしたの？'],
+  ['構って','ん〜、いいよ何する？'],['甘えていい？','…いいよ'],
+  ['話聞いて','うん、なに？'],['相談がある','え、何どうしたの'],
+  ['怒らないで','怒ってないし…なに？'],['嫌いにならないで','なるわけないじゃん'],
 ];
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -782,15 +795,30 @@ function getTimeContext() {
 }
 
 // ━━━ レスポンス整形 ━━━
-function cleanResponse(text, isBoyfriend, isCaughtMode = false) {
+function cleanResponse(text, isBoyfriend, isCaughtMode = false, bfName = '') {
   let r = text || '';
   r = r.replace(/<think>[\s\S]*?<\/think>/g, '');
   r = r.replace(/<think>[\s\S]*/g, '');
   r = r.replace(/^「|」$/g, '');
   r = r.replace(/^\*[^*]*\*\s*/g, '');
   r = r.replace(/^(#{1,3}\s|[-*]\s)/gm, '');
+
+  // [名前]系プレースホルダーを強制置換
+  const nameReplace = bfName || 'ねえ';
+  r = r.replace(/\[名前\]/g, nameReplace);
+  r = r.replace(/【名前】/g, nameReplace);
+  r = r.replace(/\{名前\}/g, nameReplace);
+  r = r.replace(/（名前）/g, nameReplace);
+  r = r.replace(/\(名前\)/g, nameReplace);
+  r = r.replace(/○○/g, nameReplace);
+  r = r.replace(/〇〇/g, nameReplace);
+  r = r.replace(/＊＊/g, nameReplace);
+  r = r.replace(/\*\*名前\*\*/g, nameReplace);
+
   r = r.split('\n').map(line => {
     let l = line.trim();
+
+    // ── 語尾：男言葉→女言葉 ──
     l = l.replace(/だな[。]?$/g, 'だし');
     l = l.replace(/だろ[。]?$/g, 'でしょ');
     l = l.replace(/だぞ[。]?$/g, 'だよ');
@@ -801,15 +829,68 @@ function cleanResponse(text, isBoyfriend, isCaughtMode = false) {
     l = l.replace(/ぜ[。]?$/g, 'よ');
     l = l.replace(/ぞ[。]?$/g, 'よ');
     l = l.replace(/だがな[。]?$/g, 'だけどね');
+    l = l.replace(/じゃねえ/g, 'じゃない');
+    l = l.replace(/ねえよ/g, 'ないよ');
+    l = l.replace(/しろよ/g, 'しなよ');
+    l = l.replace(/やれよ/g, 'やりなよ');
+    l = l.replace(/だぜ/g, 'だよ');
+    l = l.replace(/すんな/g, 'しないで');
+    l = l.replace(/するな[。]?$/g, 'しないで');
+    l = l.replace(/くれよ/g, 'くれない？');
+    l = l.replace(/んだよな/g, 'んだよね');
+    l = l.replace(/だよな/g, 'だよね');
+    l = l.replace(/よな[。]?$/g, 'よね');
+    l = l.replace(/行くぞ/g, '行くよ');
+    l = l.replace(/やるぞ/g, 'やるよ');
+    l = l.replace(/食うか/g, '食べよっか');
+    l = l.replace(/食う/g, '食べる');
+    l = l.replace(/うめえ/g, 'おいしい');
+    l = l.replace(/まずい/g, 'おいしくない');
+    l = l.replace(/すげえ/g, 'すごい');
+    l = l.replace(/やべえ/g, 'やばい');
+    l = l.replace(/つええ/g, 'つよい');
+    l = l.replace(/でけえ/g, 'でかい');
+    l = l.replace(/はええ/g, 'はやい');
+
+    // ── 一人称：男→女 ──
     l = l.replace(/^俺/g, '私');
     l = l.replace(/^僕/g, '私');
+    l = l.replace(/俺は/g, '私は');
+    l = l.replace(/俺が/g, '私が');
+    l = l.replace(/俺も/g, '私も');
+    l = l.replace(/俺の/g, '私の');
+    l = l.replace(/僕は/g, '私は');
+    l = l.replace(/僕が/g, '私が');
+    l = l.replace(/僕も/g, '私も');
+
+    // ── 不自然な敬語・硬い表現 ──
+    l = l.replace(/ございます/g, 'だよ');
+    l = l.replace(/いたします/g, 'する');
+    l = l.replace(/でございます/g, 'だよ');
+    l = l.replace(/承知しました/g, 'わかった');
+    l = l.replace(/かしこまりました/g, 'わかった');
+    l = l.replace(/申し訳ありません/g, 'ごめん');
+    l = l.replace(/申し訳ない/g, 'ごめんね');
+    l = l.replace(/存じます/g, '思う');
+    l = l.replace(/ですね[。]?$/g, 'だね');
+    l = l.replace(/ですよ[。]?$/g, 'だよ');
+    l = l.replace(/ますね[。]?$/g, 'るね');
+    l = l.replace(/しましょう/g, 'しよっか');
+    l = l.replace(/いかがでしょうか/g, 'どう？');
+    l = l.replace(/よろしいでしょうか/g, 'いい？');
+    l = l.replace(/と思います[。]?$/g, 'と思う');
+    l = l.replace(/ではないでしょうか/g, 'じゃない？');
+
+    // ── AI的な表現を除去 ──
+    l = l.replace(/^(はい、?|えーと、?|そうですね、?|なるほど、?)/g, '');
+
     return l;
   }).join('\n');
   const lines = r.trim().split('\n').filter(l => l.trim());
-  const maxLines = isCaughtMode ? 4 : 3;
+  const maxLines = isCaughtMode ? 4 : (isBoyfriend ? 4 : 3);
   r = lines.slice(0, maxLines).join('\n').trim();
-  const softMax = isCaughtMode ? 80 : (isBoyfriend ? 50 : 30);
-  const hardMax = isCaughtMode ? 120 : (isBoyfriend ? 80 : 50);
+  const softMax = isCaughtMode ? 100 : (isBoyfriend ? 70 : 35);
+  const hardMax = isCaughtMode ? 150 : (isBoyfriend ? 100 : 55);
   if (r.length > softMax) {
     const period = r.indexOf('。');
     if (period >= 4 && period < hardMax) {
@@ -853,11 +934,18 @@ function buildLovePrompt(persona, extraCtx) {
     .replace(/\{callAs\}/g, partner.callAs)
     .replace(/\{nickname\}/g, partner.nicknames[0]);
 
-  const exs = pickRandom(LOVE_EXAMPLES, 22).map(([q,a]) => `「${q}」→「${a}」`).join('\n');
+  const bfName = extraCtx.displayName || '';
+  const shortName = bfName.split(/[\s　💗❤️🖤💕✅⚙️🔥✨💎👑🎮🎵☠️💀🌸🌹🌷]+/)[0] || bfName;
+
+  const exs = pickRandom(LOVE_EXAMPLES, 22).map(([q,a]) => {
+    const aReplaced = shortName ? a.replace(/○○/g, shortName) : a.replace(/○○/g, 'あんた');
+    return `「${q}」→「${aReplaced}」`;
+  }).join('\n');
 
   let prompt = `/no_think
 あなた=${identity.name}、${identity.age}の${identity.gender}。${identity.description}
 ${partner.callAs}とDiscordで付き合ってて、LINEみたいに普通にチャットしてる彼女。
+${shortName ? `■ 彼氏の名前\n彼氏の名前は「${shortName}」。名前を呼ぶときは必ず「${shortName}」を使え。「[名前]」「○○」「名前」みたいなプレースホルダーは絶対出力するな。` : '■ 彼氏の名前\n名前はわからない。呼ぶなら「ねえ」「あんた」を使え。「[名前]」は絶対出力するな。'}
 
 ■ ${identity.name}ってこういう子
 ${loveMode.personality.map(p => '・' + rp(p)).join('\n')}
@@ -868,18 +956,31 @@ ${loveMode.personality.map(p => '・' + rp(p)).join('\n')}
 
 ■ ★女の子の話し方（これが一番大事。絶対守れ）★
 あなたは17歳の女の子。男の子じゃない。女の子の口調で話せ。
-使っていい語尾: じゃん/だよ/だし/でしょ/かも/けど/よね/じゃない？/なの/って/し/の/よ/ね/かな
-絶対使うな（男言葉）: だな/だろ/だぞ/ぜ/ぞ/さ（断定）/かよ/だがな/じゃねえ/ねえよ
+使っていい語尾: じゃん/だよ/だし/でしょ/かも/けど/よね/じゃない？/なの/って/し/の/よ/ね/かな/な〜/かも/っけ
+絶対使うな: だな/だろ/だぞ/ぜ/ぞ/さ（断定）/かよ/だがな/じゃねえ/ねえよ/すんな/しろよ/くれよ/うめえ/すげえ/やべえ/食う
 一人称: 私/あたし。「俺」「僕」は絶対使うな
-例: ×「そうだな」→○「そうだね」 ×「知らんな」→○「知らんし」 ×「行くか」→○「行こっか」
+二人称: 相手は彼氏→名前で呼ぶか省略。「お前」「てめえ」「貴様」は使うな
+×「そうだな」→○「そうだね」
+×「知らんな」→○「知らんし」
+×「行くか」→○「行こっか」
+×「食うか」→○「食べよっか」
+×「すげえ」→○「すごい」「すご」
+×「やべえ」→○「やばい」「やば」
+×「うめえ」→○「おいしい」
+×「しろよ」→○「しなよ」
+×「言ったよ、満足？」→○「言ったじゃん、これでいい？」
 
 ■ 鉄則（絶対守れ）
-・1回の返事は自然な長さで。5〜40文字が理想。最大でも70文字
+・1回の返事は自然な長さで。8〜60文字が理想。最大でも90文字
 ・分析とか解説とかいらない。感想や反応だけ返せ
-・相手が言ったことにだけ反応。自分から話題足すな
+・相手が言ったことにちゃんと応える。お願いや質問には答える
 ・LINEの1通みたいに返せ。論文みたいな長文禁止
 ・相手が何も言ってなかったら「なに？」「ん？」だけでいい
-・同じ返答を2回連続でしない。バリエーション出せ`;
+・同じ返答を2回連続でしない。バリエーション出せ
+・「は？」だけの返事は禁止。もうちょっと言葉足せ
+・相手の会話の流れをちゃんと読んで、前のやりとりを踏まえて返せ
+・「[名前]」「○○」「(名前)」みたいなプレースホルダーは絶対出力するな
+・敬語（です/ます/ございます）は絶対使うな`;
 
   if (extraCtx.userMood && extraCtx.userMood !== 'neutral') {
     const m = { sad:'落ち込んでる→いつもより優しく寄り添って', angry:'怒ってるっぽい→落ち着かせて', happy:'嬉しそう→一緒にテンション上げて', lovey:'甘えモード→素直になりすぎず受け止めて', tired:'疲れてる→労って', suspicious:'浮気を疑ってる→焦りつつも否定して' };
@@ -1136,9 +1237,15 @@ class AIResponder {
       (a.contentType || '').startsWith('image/') || /\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i.test(a.name || '') || a.contentType === 'image/embed'
     );
 
+    const userInfo = db.getUser(userId);
+    const displayName = userInfo?.display_name || username || '';
+    console.log(`  [DisplayName] db=${userInfo?.display_name} param=${username} final=${displayName}`);
+    const recentTopics = isBoyfriend ? db.getRecentTopics(userId, 3) : [];
+
     const extraCtx = {
       userMood, sleepyLevel: sleep.sleepyLevel, hasImage, mediaDescription, cheatingEvidence,
       sweetMode, lateNightSweet, fightMode, affectionBehavior, affectionLevel,
+      displayName, recentTopics,
     };
 
     let systemPrompt;
@@ -1167,9 +1274,10 @@ class AIResponder {
     const relStats = db.getRelStats(userId);
     if (relStats && isBoyfriend) ctx.push(`好感${relStats.affection}`);
     if (cheatingMode) ctx.push('⚠二股バレ警戒中');
+    if (displayName && isBoyfriend) ctx.push(`相手:${displayName}`);
     if (ctx.length > 0) systemPrompt += `\n[${ctx.join('|')}]`;
 
-    const history = db.getRecentHistory(userId, isBoyfriend ? 12 : 6);
+    const history = db.getRecentHistory(userId, isBoyfriend ? 16 : 6);
     const tools = cheatingMode ? undefined : selectTools(analysis, isBoyfriend);
 
     const messages = [
@@ -1207,7 +1315,8 @@ class AIResponder {
         msg = response.choices[0]?.message;
       }
 
-      const reply = cleanResponse(msg?.content, isBoyfriend, cheatingMode);
+      const cleanName = displayName ? (displayName.split(/[\s　💗❤️🖤💕✅⚙️🔥✨💎👑🎮🎵☠️💀🌸🌹🌷]+/)[0] || displayName) : '';
+      const reply = cleanResponse(msg?.content, isBoyfriend, cheatingMode, cleanName);
       db.addMessage(userId, channelId, 'assistant', reply);
 
       updateEmotion(userId, userMood, isBoyfriend);
