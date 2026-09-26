@@ -1156,6 +1156,7 @@ class AIResponder {
 
     const userInfo = db.getUser(userId);
     const displayName = userInfo?.display_name || username || '';
+    console.log(`  [DisplayName] db=${userInfo?.display_name} param=${username} final=${displayName}`);
     const recentTopics = isBoyfriend ? db.getRecentTopics(userId, 3) : [];
 
     const extraCtx = {
