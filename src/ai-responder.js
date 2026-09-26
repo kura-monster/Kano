@@ -143,6 +143,20 @@ const LOVE_EXAMPLES = [
   ['世界で一番好き','大げさ笑'],['宝物だよ','…やめて恥ずかしい'],
   ['一生好きだよ','気が早い笑'],['結婚しよ','え、まだ高校生なんだけど笑'],
 
+  // ── ムラムラモード（ボット側から求める） ──
+  ['(普通の会話)','…ねえ、今なにしてる？…なんでもない…会いたい'],
+  ['え、なに？','…べつに。…ねえ、触って'],
+  ['どうしたの','…近くにいたい…もっとくっついてたい'],
+  ['今何してる？','…○○のこと考えてた…ぎゅーしてほしい'],
+  ['ん？','…やだ、言えない…○○に会いたいだけ'],
+  ['元気？','…元気だけど…○○に会えなくてむりなんだけど'],
+  ['返事遅いよ','…ごめん…○○のことずっと考えてた…'],
+  ['(名前だけ呼んだ)','…なに？…ねえ、今すぐそばに来て…くっつきたい'],
+  ['暇','…私も…ねえ、こっち来て…ぎゅーして…もっと'],
+  ['何話す？','…話じゃなくて…触ってほしい…'],
+  ['大丈夫？','…大丈夫じゃない…○○がいないと…やだ'],
+  ['かわいい','…もっと言って…○○にもっと触ってほしい'],
+
   // ── 浮気・嫉妬 ──
   ['浮気してない？','してないし笑'],['浮気しないでね','するわけない'],
   ['私のこと好き？','…たぶん'],['ほんとに好き？','しつこ笑'],
@@ -639,6 +653,61 @@ function getAffectionBehavior(affection) {
   return { desc: '氷河期', tips: '塩対応に近い。返事が一言。でも別れるとは言わない' };
 }
 
+// ━━━ ムラムラモード（彼氏が何度も求めてきた時に発動） ━━━
+const muraState = new Map();
+
+function detectMuraMessage(text) {
+  return /(エッチ|えっち|Hし|hし|したい|やりたい|ヤりたい|ヤバい.*したい|触り?たい|触って|抱[いき]たい|抱きしめ|添い寝|一緒に寝|襲[うい]|食べちゃ|押し倒|キス[し]?たい|ちゅー|もっと|イチャイチャ|いちゃいちゃ|ムラムラ|むらむら|興奮|ドキドキ|胸|おっぱい|脱[いぎ]|裸|お風呂.*一緒|一緒.*お風呂|夜.*二人|二人.*夜|ベッド|べっど|感じ[てる]|気持ちい|きもちい|舐め|なめ|噛[んみ])/.test(text);
+}
+
+function checkMuraMode(userId, text) {
+  const now = Date.now();
+  let state = muraState.get(userId);
+  if (!state) {
+    state = { count: 0, timestamps: [], active: false, activeSince: 0 };
+    muraState.set(userId, state);
+  }
+
+  // アクティブ中は20分で解除
+  if (state.active) {
+    if (now - state.activeSince > 20 * 60 * 1000) {
+      state.active = false;
+      state.count = 0;
+      state.timestamps = [];
+      console.log('  [ムラムラモード] 時間切れで解除');
+      return false;
+    }
+    // アクティブ中にさらに求めてきたら延長
+    if (detectMuraMessage(text)) {
+      state.activeSince = now;
+    }
+    return true;
+  }
+
+  // 求めメッセージ検出
+  if (detectMuraMessage(text)) {
+    // 10分以内のメッセージだけカウント
+    state.timestamps = state.timestamps.filter(t => now - t < 10 * 60 * 1000);
+    state.timestamps.push(now);
+    state.count = state.timestamps.length;
+    console.log(`  [ムラムラ判定] カウント: ${state.count}/3`);
+
+    // 3回以上求められたら発動
+    if (state.count >= 3) {
+      state.active = true;
+      state.activeSince = now;
+      console.log('  [ムラムラモード] 発動！');
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function clearMuraMode(userId) {
+  muraState.delete(userId);
+}
+
 // ━━━ 話題検出 ━━━
 function detectTopicFromMessage(text) {
   const topicMap = [
@@ -795,12 +864,13 @@ function getTimeContext() {
 }
 
 // ━━━ レスポンス整形 ━━━
-function cleanResponse(text, isBoyfriend, isCaughtMode = false, bfName = '') {
+function cleanResponse(text, isBoyfriend, isCaughtMode = false, bfName = '', isMuraMode = false) {
   let r = text || '';
   r = r.replace(/<think>[\s\S]*?<\/think>/g, '');
   r = r.replace(/<think>[\s\S]*/g, '');
   r = r.replace(/^「|」$/g, '');
-  r = r.replace(/^\*[^*]*\*\s*/g, '');
+  r = r.replace(/^\*[^*]*\*\s*/gm, '');
+  r = r.replace(/\*[^*]+\*/g, '');
   r = r.replace(/^(#{1,3}\s|[-*]\s)/gm, '');
 
   // [名前]系プレースホルダーを強制置換
@@ -814,17 +884,16 @@ function cleanResponse(text, isBoyfriend, isCaughtMode = false, bfName = '') {
   r = r.replace(/〇〇/g, nameReplace);
   r = r.replace(/＊＊/g, nameReplace);
   r = r.replace(/\*\*名前\*\*/g, nameReplace);
+  r = r.replace(/名前さん/g, nameReplace);
 
-  r = r.split('\n').map(line => {
-    let l = line.trim();
-
+  const fixLine = (l) => {
     // ── 語尾：男言葉→女言葉 ──
     l = l.replace(/だな[。]?$/g, 'だし');
-    l = l.replace(/だろ[。]?$/g, 'でしょ');
+    l = l.replace(/だろ[。？?]?$/g, 'でしょ');
     l = l.replace(/だぞ[。]?$/g, 'だよ');
-    l = l.replace(/だろう[。]?$/g, 'でしょ');
+    l = l.replace(/だろう[。？?]?$/g, 'でしょ');
     l = l.replace(/ないな[。]?$/g, 'ないし');
-    l = l.replace(/するか[。]?$/g, 'しよっか');
+    l = l.replace(/するか[。？?]?$/g, 'しよっか');
     l = l.replace(/かよ[。]?$/g, 'なんだけど');
     l = l.replace(/ぜ[。]?$/g, 'よ');
     l = l.replace(/ぞ[。]?$/g, 'よ');
@@ -843,54 +912,100 @@ function cleanResponse(text, isBoyfriend, isCaughtMode = false, bfName = '') {
     l = l.replace(/行くぞ/g, '行くよ');
     l = l.replace(/やるぞ/g, 'やるよ');
     l = l.replace(/食うか/g, '食べよっか');
+    l = l.replace(/食った/g, '食べた');
+    l = l.replace(/食って/g, '食べて');
     l = l.replace(/食う/g, '食べる');
     l = l.replace(/うめえ/g, 'おいしい');
-    l = l.replace(/まずい/g, 'おいしくない');
     l = l.replace(/すげえ/g, 'すごい');
+    l = l.replace(/すげー/g, 'すごー');
     l = l.replace(/やべえ/g, 'やばい');
+    l = l.replace(/やべー/g, 'やばー');
     l = l.replace(/つええ/g, 'つよい');
     l = l.replace(/でけえ/g, 'でかい');
     l = l.replace(/はええ/g, 'はやい');
+    l = l.replace(/ヤバい/g, 'やばい');
 
-    // ── 一人称：男→女 ──
+    // ── 一人称：男→女（全パターン） ──
+    l = l.replace(/俺([はがもをのにとだ])/g, '私$1');
+    l = l.replace(/^俺$/g, '私');
+    l = l.replace(/^俺、/g, '私、');
     l = l.replace(/^俺/g, '私');
+    l = l.replace(/僕([はがもをのにとだ])/g, '私$1');
     l = l.replace(/^僕/g, '私');
-    l = l.replace(/俺は/g, '私は');
-    l = l.replace(/俺が/g, '私が');
-    l = l.replace(/俺も/g, '私も');
-    l = l.replace(/俺の/g, '私の');
-    l = l.replace(/僕は/g, '私は');
-    l = l.replace(/僕が/g, '私が');
-    l = l.replace(/僕も/g, '私も');
 
-    // ── 不自然な敬語・硬い表現 ──
+    // ── 二人称：乱暴→普通 ──
+    l = l.replace(/てめえ/g, 'あんた');
+    l = l.replace(/テメエ/g, 'あんた');
+    l = l.replace(/貴様/g, 'あんた');
+    l = l.replace(/おめえ/g, 'あんた');
+
+    // ── 不自然な敬語・硬い表現→カジュアル ──
+    l = l.replace(/でございます/g, 'だよ');
     l = l.replace(/ございます/g, 'だよ');
     l = l.replace(/いたします/g, 'する');
-    l = l.replace(/でございます/g, 'だよ');
     l = l.replace(/承知しました/g, 'わかった');
+    l = l.replace(/承知です/g, 'わかった');
     l = l.replace(/かしこまりました/g, 'わかった');
     l = l.replace(/申し訳ありません/g, 'ごめん');
     l = l.replace(/申し訳ない/g, 'ごめんね');
     l = l.replace(/存じます/g, '思う');
-    l = l.replace(/ですね[。]?$/g, 'だね');
-    l = l.replace(/ですよ[。]?$/g, 'だよ');
-    l = l.replace(/ますね[。]?$/g, 'るね');
     l = l.replace(/しましょう/g, 'しよっか');
     l = l.replace(/いかがでしょうか/g, 'どう？');
     l = l.replace(/よろしいでしょうか/g, 'いい？');
-    l = l.replace(/と思います[。]?$/g, 'と思う');
     l = l.replace(/ではないでしょうか/g, 'じゃない？');
+    l = l.replace(/と思います/g, 'と思う');
+    l = l.replace(/ですけれども/g, 'だけど');
+    l = l.replace(/ですけど/g, 'だけど');
+    l = l.replace(/ですが/g, 'だけど');
+    l = l.replace(/ですので/g, 'だから');
+    l = l.replace(/ですから/g, 'だから');
+    l = l.replace(/ですよね/g, 'だよね');
+    l = l.replace(/ですね[。]?$/g, 'だね');
+    l = l.replace(/ですよ[。]?$/g, 'だよ');
+    l = l.replace(/ですか[。？?]?$/g, 'なの？');
+    l = l.replace(/ますか[。？?]?$/g, 'るの？');
+    l = l.replace(/ません[。]?$/g, 'ないよ');
+    l = l.replace(/ますね[。]?$/g, 'るね');
+    l = l.replace(/ますよ[。]?$/g, 'るよ');
+    l = l.replace(/ました[。]?$/g, 'たよ');
+    l = l.replace(/ます[。]?$/g, 'る');
+    l = l.replace(/です[。]?$/g, 'だよ');
 
-    // ── AI的な表現を除去 ──
-    l = l.replace(/^(はい、?|えーと、?|そうですね、?|なるほど、?)/g, '');
+    // ── AI的・説明的な表現を除去 ──
+    l = l.replace(/^(はい、?|えーと、?|そうですね、?|なるほど、?|確かに、?)/g, '');
+    l = l.replace(/^(ええ、|ふむ、|あの、|すみません、?|ありがとうございます、?)/g, '');
+    l = l.replace(/という(こと|わけ|意味)です/g, 'ってこと');
+    l = l.replace(/のではないかと/g, 'かも');
+    l = l.replace(/と考えられます/g, 'かも');
+    l = l.replace(/理解しました/g, 'わかった');
+    l = l.replace(/了解しました/g, 'わかった');
+    l = l.replace(/了解です/g, 'おっけー');
 
     return l;
-  }).join('\n');
-  const lines = r.trim().split('\n').filter(l => l.trim());
-  const maxLines = isCaughtMode ? 4 : (isBoyfriend ? 4 : 3);
+  };
+
+  // 行ごとに修正
+  let lines = r.split('\n').map(l => fixLine(l.trim())).filter(l => l);
+
+  // 名前だけの行を次の行にマージ
+  if (bfName && lines.length > 1) {
+    const merged = [];
+    for (let i = 0; i < lines.length; i++) {
+      const stripped = lines[i].replace(/[、。！？…〜♡☆★\s]/g, '');
+      if (stripped === bfName && i + 1 < lines.length) {
+        merged.push(lines[i] + '、' + lines[i + 1]);
+        i++;
+      } else {
+        merged.push(lines[i]);
+      }
+    }
+    lines = merged;
+  }
+
+  const maxLines = isMuraMode ? 4 : (isCaughtMode ? 4 : (isBoyfriend ? 3 : 2));
   r = lines.slice(0, maxLines).join('\n').trim();
-  const softMax = isCaughtMode ? 100 : (isBoyfriend ? 70 : 35);
-  const hardMax = isCaughtMode ? 150 : (isBoyfriend ? 100 : 55);
+  const softMax = isMuraMode ? 120 : (isCaughtMode ? 100 : (isBoyfriend ? 70 : 35));
+  const hardMax = isMuraMode ? 180 : (isCaughtMode ? 150 : (isBoyfriend ? 100 : 55));
   if (r.length > softMax) {
     const period = r.indexOf('。');
     if (period >= 4 && period < hardMax) {
@@ -905,6 +1020,11 @@ function cleanResponse(text, isBoyfriend, isCaughtMode = false, bfName = '') {
     }
   }
   r = r.replace(/、$/g, '');
+  r = r.replace(/^、/g, '');
+
+  // 最終チェック：残ったプレースホルダーを除去
+  r = r.replace(/\[.*?名前.*?\]/g, nameReplace);
+
   if (!r) r = isBoyfriend ? 'ん？' : '…';
   return r;
 }
@@ -937,7 +1057,34 @@ function buildLovePrompt(persona, extraCtx) {
   const bfName = extraCtx.displayName || '';
   const shortName = bfName.split(/[\s　💗❤️🖤💕✅⚙️🔥✨💎👑🎮🎵☠️💀🌸🌹🌷]+/)[0] || bfName;
 
-  const exs = pickRandom(LOVE_EXAMPLES, 22).map(([q,a]) => {
+  let examplePool = LOVE_EXAMPLES;
+  if (extraCtx.muraMode) {
+    const muraExamples = [
+      ['エッチしたい','…ばか…でも…私も…したい'],
+      ['触りたい','…うん…もっと触って…やだ止めないで'],
+      ['もっとくっつきたい','…ん…もっとぎゅってして…離さないで'],
+      ['キスしていい？','…ん…して…もっと'],
+      ['抱きしめていい？','…きつく…もっときつくして…'],
+      ['好き','…好き…○○のこと好きすぎておかしくなりそう…ねえ触って'],
+      ['いい匂いする','…やだ…恥ずかしい…でも○○の匂いもっと嗅ぎたい'],
+      ['かわいい','…もっと言って…もっと私のこと見て'],
+      ['(普通の会話)','…ねえ…今日うち来ない？…二人きりになりたい'],
+      ['暇','…暇なら来て…ベッドあったかいよ…'],
+      ['ん？','…なんでもない…ただ…○○のこと考えてたらどきどきしてきた'],
+      ['添い寝しよ','…うん…くっついて…もっと…そのまま離さないで'],
+      ['気持ちいい？','…ん…きもちいい…もっとして'],
+      ['脱いで','…ばか…でも○○になら…いいよ'],
+      ['襲っていい？','…○○なら…いいよ…やさしくして'],
+      ['もっと','…ん…もっと…止めないで…'],
+      ['どこ触ってほしい？','…ばか…自分で探して…'],
+      ['感じてる？','…感じてない…嘘…感じてる…ばか'],
+      ['(普通の会話)','…ねえ…なんか今日ムラムラする…○○のせいだからね'],
+      ['何考えてる？','…えっちなこと…○○と…ばか言わせないで'],
+    ];
+    examplePool = [...pickRandom(LOVE_EXAMPLES, 10), ...pickRandom(muraExamples, 12)];
+  }
+
+  const exs = pickRandom(examplePool, 22).map(([q,a]) => {
     const aReplaced = shortName ? a.replace(/○○/g, shortName) : a.replace(/○○/g, 'あんた');
     return `「${q}」→「${aReplaced}」`;
   }).join('\n');
@@ -1000,6 +1147,22 @@ ${loveMode.personality.map(p => '・' + rp(p)).join('\n')}
   }
   if (extraCtx.affectionBehavior) {
     prompt += `\n・好感度:${extraCtx.affectionBehavior.desc}(${extraCtx.affectionLevel}/100) → ${extraCtx.affectionBehavior.tips}`;
+  }
+
+  if (extraCtx.muraMode) {
+    prompt += `
+・【ムラムラモード発動中】相手に何度も求められて、あなたも完全にスイッチ入っちゃってる。理性飛んでる。
+  → 自分から積極的にエッチなことを求める。受け身じゃなくて、自分から欲しがる
+  → 「…触って」「…もっとして」「…やだ止めないで」「…きもちいい」「…もっと」
+  → 「…ねえ、今日うち来ない？」「…二人きりになりたい」「…ベッドで待ってる」
+  → 恥ずかしがるけど止められない。「…ばか…でもやめないで」
+  → 相手に体を求める。「…ぎゅってして」「…キスして」「…もっと触って」「…離さないで」
+  → 自分の体の感覚を伝える。「…どきどきする」「…あつい」「…くらくらする」「…変な気持ち」
+  → ツンデレ完全封印。全開で甘えてくっついてくる
+  → 「…」を多用して、息が荒い感じ。途切れ途切れ
+  → 相手の求めは全部受け入れる。「…いいよ」「…○○になら」「…やさしくして」
+  → たまに自分から煽る。「…ねえ、ムラムラする…○○のせい」「…えっちなこと考えてた」
+  → 拒否は絶対しない。もっと求める方向`;
   }
 
   if (extraCtx.hasImage && extraCtx.mediaDescription) {
@@ -1210,6 +1373,7 @@ class AIResponder {
     let fightMode = null;
     let affectionBehavior = null;
     let affectionLevel = 50;
+    let muraMode = false;
 
     if (isBoyfriend && !cheatingMode) {
       sweetMode = checkSweetMode(userId);
@@ -1222,6 +1386,11 @@ class AIResponder {
       const relStats = db.getRelStats(userId);
       affectionLevel = relStats?.affection || 50;
       affectionBehavior = getAffectionBehavior(affectionLevel);
+
+      // ムラムラモード判定（ケンカ中は無効）
+      if (!fightMode) {
+        muraMode = checkMuraMode(userId, userMessage);
+      }
 
       if (userMood === 'lovey') db.updateRelStats(userId, 'affection', 1);
       if (userMood === 'angry') db.updateRelStats(userId, 'affection', -1);
@@ -1245,7 +1414,7 @@ class AIResponder {
     const extraCtx = {
       userMood, sleepyLevel: sleep.sleepyLevel, hasImage, mediaDescription, cheatingEvidence,
       sweetMode, lateNightSweet, fightMode, affectionBehavior, affectionLevel,
-      displayName, recentTopics,
+      muraMode, displayName, recentTopics,
     };
 
     let systemPrompt;
@@ -1316,7 +1485,7 @@ class AIResponder {
       }
 
       const cleanName = displayName ? (displayName.split(/[\s　💗❤️🖤💕✅⚙️🔥✨💎👑🎮🎵☠️💀🌸🌹🌷]+/)[0] || displayName) : '';
-      const reply = cleanResponse(msg?.content, isBoyfriend, cheatingMode, cleanName);
+      const reply = cleanResponse(msg?.content, isBoyfriend, cheatingMode, cleanName, muraMode);
       db.addMessage(userId, channelId, 'assistant', reply);
 
       updateEmotion(userId, userMood, isBoyfriend);
