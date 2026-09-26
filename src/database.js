@@ -91,6 +91,46 @@ async function init() {
     )
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS fight_state (
+      user_id TEXT PRIMARY KEY,
+      active INTEGER DEFAULT 0,
+      reason TEXT DEFAULT '',
+      started_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS anniversary_dates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      date TEXT NOT NULL,
+      event TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_anniv_user ON anniversary_dates(user_id)`);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS skinship_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_skinship_user ON skinship_log(user_id)`);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS topic_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      channel_id TEXT,
+      topic TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
   save();
   console.log('[DB] 初期化完了');
 }
@@ -292,6 +332,78 @@ function getFirstConversationDate(userId) {
   return date;
 }
 
+function getFightState(userId) {
+  const stmt = db.prepare('SELECT * FROM fight_state WHERE user_id = ? AND active = 1');
+  stmt.bind([userId]);
+  let row = null; if (stmt.step()) row = stmt.getAsObject(); stmt.free();
+  if (row) {
+    const mins = (Date.now() - new Date(row.started_at + 'Z').getTime()) / 60000;
+    if (mins > 60) { clearFightState(userId); return null; }
+    row.minutesAgo = Math.floor(mins);
+  }
+  return row;
+}
+
+function setFightState(userId, reason) {
+  db.run("INSERT OR REPLACE INTO fight_state (user_id, active, reason, started_at) VALUES (?, 1, ?, datetime('now'))", [userId, reason]);
+  scheduleSave();
+}
+
+function clearFightState(userId) {
+  db.run('UPDATE fight_state SET active = 0 WHERE user_id = ?', [userId]);
+  scheduleSave();
+}
+
+function addAnniversaryDate(userId, date, event) {
+  db.run('INSERT INTO anniversary_dates (user_id, date, event) VALUES (?, ?, ?)', [userId, date, event]);
+  scheduleSave();
+}
+
+function getAnniversaryDates(userId) {
+  const stmt = db.prepare('SELECT * FROM anniversary_dates WHERE user_id = ? ORDER BY date');
+  stmt.bind([userId]);
+  const rows = []; while (stmt.step()) rows.push(stmt.getAsObject()); stmt.free();
+  return rows;
+}
+
+function getUpcomingAnniversaries() {
+  const stmt = db.prepare('SELECT * FROM anniversary_dates ORDER BY date');
+  stmt.bind([]);
+  const rows = []; while (stmt.step()) rows.push(stmt.getAsObject()); stmt.free();
+  return rows;
+}
+
+function addSkinship(userId, type) {
+  db.run('INSERT INTO skinship_log (user_id, type) VALUES (?, ?)', [userId, type]);
+  scheduleSave();
+}
+
+function getSkinshipStats(userId) {
+  const stmt = db.prepare('SELECT type, COUNT(*) as count FROM skinship_log WHERE user_id = ? GROUP BY type ORDER BY count DESC');
+  stmt.bind([userId]);
+  const rows = []; while (stmt.step()) rows.push(stmt.getAsObject()); stmt.free();
+  return rows;
+}
+
+function getRecentTopics(userId, limit = 5) {
+  const stmt = db.prepare('SELECT topic, created_at FROM topic_log WHERE user_id = ? ORDER BY id DESC LIMIT ?');
+  stmt.bind([userId, limit]);
+  const rows = []; while (stmt.step()) rows.push(stmt.getAsObject()); stmt.free();
+  return rows;
+}
+
+function addTopic(userId, channelId, topic) {
+  db.run('INSERT INTO topic_log (user_id, channel_id, topic) VALUES (?, ?, ?)', [userId, channelId, topic]);
+  scheduleSave();
+}
+
+function getAllBoyfriendStats() {
+  const stmt = db.prepare('SELECT rs.user_id, rs.affection, rs.trust, rs.jealousy, um.display_name, um.message_count FROM relationship_stats rs LEFT JOIN user_memory um ON rs.user_id = um.user_id ORDER BY rs.affection DESC');
+  stmt.bind([]);
+  const rows = []; while (stmt.step()) rows.push(stmt.getAsObject()); stmt.free();
+  return rows;
+}
+
 function close() {
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
   save();
@@ -304,4 +416,8 @@ module.exports = {
   addDiary, getDiary, addPromise, getPromises, updatePromise,
   logEmotion, getEmotionLog, getRelStats, updateRelStats,
   getConversationCount, getFirstConversationDate,
+  getFightState, setFightState, clearFightState,
+  addAnniversaryDate, getAnniversaryDates, getUpcomingAnniversaries,
+  addSkinship, getSkinshipStats,
+  getRecentTopics, addTopic, getAllBoyfriendStats,
 };
