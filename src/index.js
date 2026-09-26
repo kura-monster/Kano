@@ -352,7 +352,8 @@ async function main() {
 
     let response;
     try {
-      response = await ai.generateResponse(userId, userMessage, message.author.username, message.channel.id, attachments, mediaDescription);
+      const dispName = message.member?.displayName || message.author.globalName || message.author.displayName || message.author.username;
+      response = await ai.generateResponse(userId, userMessage, dispName, message.channel.id, attachments, mediaDescription);
     } finally {
       clearInterval(typingLoop);
     }
