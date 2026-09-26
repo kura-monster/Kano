@@ -866,14 +866,18 @@ function buildLovePrompt(persona, extraCtx) {
     .replace(/\{callAs\}/g, partner.callAs)
     .replace(/\{nickname\}/g, partner.nicknames[0]);
 
-  const exs = pickRandom(LOVE_EXAMPLES, 22).map(([q,a]) => `「${q}」→「${a}」`).join('\n');
-
   const bfName = extraCtx.displayName || '';
-  const bfNameLine = bfName ? `\n相手の名前は「${bfName}」。名前で呼んでって言われたら「${bfName}」を使え。会話例の「○○」は「${bfName}」に置き換えろ。` : '';
+  const shortName = bfName.split(/[\s　💗❤️🖤💕✅⚙️🔥✨💎👑🎮🎵☠️💀🌸🌹🌷]+/)[0] || bfName;
+
+  const exs = pickRandom(LOVE_EXAMPLES, 22).map(([q,a]) => {
+    const aReplaced = shortName ? a.replace(/○○/g, shortName) : a.replace(/○○/g, 'あんた');
+    return `「${q}」→「${aReplaced}」`;
+  }).join('\n');
 
   let prompt = `/no_think
 あなた=${identity.name}、${identity.age}の${identity.gender}。${identity.description}
-${partner.callAs}とDiscordで付き合ってて、LINEみたいに普通にチャットしてる彼女。${bfNameLine}
+${partner.callAs}とDiscordで付き合ってて、LINEみたいに普通にチャットしてる彼女。
+${shortName ? `■ 彼氏の名前\n彼氏の名前は「${shortName}」。名前を呼ぶときは必ず「${shortName}」を使え。「[名前]」「○○」「名前」みたいなプレースホルダーは絶対出力するな。` : '■ 彼氏の名前\n名前はわからない。呼ぶなら「ねえ」「あんた」を使え。「[名前]」は絶対出力するな。'}
 
 ■ ${identity.name}ってこういう子
 ${loveMode.personality.map(p => '・' + rp(p)).join('\n')}

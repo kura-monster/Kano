@@ -352,13 +352,16 @@ async function main() {
 
     let response;
     try {
-      const memberNick = message.member?.nickname;
-      const memberDisp = message.member?.displayName;
-      const authorGlobal = message.author.globalName;
-      const authorDisp = message.author.displayName;
-      const authorUser = message.author.username;
-      const dispName = memberNick || memberDisp || authorGlobal || authorDisp || authorUser;
-      console.log(`  [Name] member.nickname=${memberNick} member.displayName=${memberDisp} author.globalName=${authorGlobal} author.displayName=${authorDisp} author.username=${authorUser} → "${dispName}"`);
+      let fetchedMember = message.member;
+      if (!fetchedMember?.nickname && message.guild) {
+        try { fetchedMember = await message.guild.members.fetch(userId); } catch {}
+      }
+      const dispName = fetchedMember?.nickname
+        || fetchedMember?.displayName
+        || message.author.globalName
+        || message.author.displayName
+        || message.author.username;
+      console.log(`  [Name] fetched=${!!fetchedMember} nickname=${fetchedMember?.nickname} displayName=${fetchedMember?.displayName} globalName=${message.author.globalName} → "${dispName}"`);
       response = await ai.generateResponse(userId, userMessage, dispName, message.channel.id, attachments, mediaDescription);
     } finally {
       clearInterval(typingLoop);
