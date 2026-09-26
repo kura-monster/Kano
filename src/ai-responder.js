@@ -143,6 +143,18 @@ const LOVE_EXAMPLES = [
   ['世界で一番好き','大げさ笑'],['宝物だよ','…やめて恥ずかしい'],
   ['一生好きだよ','気が早い笑'],['結婚しよ','え、まだ高校生なんだけど笑'],
 
+  // ── ムラムラモード（ボット側から求める） ──
+  ['(普通の会話)','…ねえ、今なにしてる？…なんでもない'],
+  ['え、なに？','…べつに。ちょっと会いたくなっただけ'],
+  ['どうしたの','近くにいたい…だめ？'],
+  ['今何してる？','…ぎゅーしてほしいなって思ってた'],
+  ['ん？','…今日、隣にいてほしい'],
+  ['元気？','…ねえ、今夜会えない？…寂しい'],
+  ['返事遅いよ','…ごめん、ちょっとぼーっとしてた。…会いたい'],
+  ['(名前だけ呼んだ)','…なに？…ねえ、くっつきたい'],
+  ['暇','…私も…ねえ、こっち来て'],
+  ['何話す？','…話じゃなくて…そばにいてほしい'],
+
   // ── 浮気・嫉妬 ──
   ['浮気してない？','してないし笑'],['浮気しないでね','するわけない'],
   ['私のこと好き？','…たぶん'],['ほんとに好き？','しつこ笑'],
@@ -639,6 +651,61 @@ function getAffectionBehavior(affection) {
   return { desc: '氷河期', tips: '塩対応に近い。返事が一言。でも別れるとは言わない' };
 }
 
+// ━━━ ムラムラモード（彼氏が何度も求めてきた時に発動） ━━━
+const muraState = new Map();
+
+function detectMuraMessage(text) {
+  return /(エッチ|えっち|Hし|hし|したい|やりたい|ヤりたい|ヤバい.*したい|触り?たい|触って|抱[いき]たい|抱きしめ|添い寝|一緒に寝|襲[うい]|食べちゃ|押し倒|キス[し]?たい|ちゅー|もっと|イチャイチャ|いちゃいちゃ|ムラムラ|むらむら|興奮|ドキドキ|胸|おっぱい|脱[いぎ]|裸|お風呂.*一緒|一緒.*お風呂|夜.*二人|二人.*夜|ベッド|べっど|感じ[てる]|気持ちい|きもちい|舐め|なめ|噛[んみ])/.test(text);
+}
+
+function checkMuraMode(userId, text) {
+  const now = Date.now();
+  let state = muraState.get(userId);
+  if (!state) {
+    state = { count: 0, timestamps: [], active: false, activeSince: 0 };
+    muraState.set(userId, state);
+  }
+
+  // アクティブ中は20分で解除
+  if (state.active) {
+    if (now - state.activeSince > 20 * 60 * 1000) {
+      state.active = false;
+      state.count = 0;
+      state.timestamps = [];
+      console.log('  [ムラムラモード] 時間切れで解除');
+      return false;
+    }
+    // アクティブ中にさらに求めてきたら延長
+    if (detectMuraMessage(text)) {
+      state.activeSince = now;
+    }
+    return true;
+  }
+
+  // 求めメッセージ検出
+  if (detectMuraMessage(text)) {
+    // 10分以内のメッセージだけカウント
+    state.timestamps = state.timestamps.filter(t => now - t < 10 * 60 * 1000);
+    state.timestamps.push(now);
+    state.count = state.timestamps.length;
+    console.log(`  [ムラムラ判定] カウント: ${state.count}/3`);
+
+    // 3回以上求められたら発動
+    if (state.count >= 3) {
+      state.active = true;
+      state.activeSince = now;
+      console.log('  [ムラムラモード] 発動！');
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function clearMuraMode(userId) {
+  muraState.delete(userId);
+}
+
 // ━━━ 話題検出 ━━━
 function detectTopicFromMessage(text) {
   const topicMap = [
@@ -988,7 +1055,26 @@ function buildLovePrompt(persona, extraCtx) {
   const bfName = extraCtx.displayName || '';
   const shortName = bfName.split(/[\s　💗❤️🖤💕✅⚙️🔥✨💎👑🎮🎵☠️💀🌸🌹🌷]+/)[0] || bfName;
 
-  const exs = pickRandom(LOVE_EXAMPLES, 22).map(([q,a]) => {
+  let examplePool = LOVE_EXAMPLES;
+  if (extraCtx.muraMode) {
+    const muraExamples = [
+      ['エッチしたい','…ばか、そんなこと言わないで…でも…だめじゃないかも'],
+      ['触りたい','…うん…いいよ'],
+      ['もっとくっつきたい','…私も…もっと近くにいたい'],
+      ['キスしていい？','…ん…いい…よ'],
+      ['抱きしめていい？','…ぎゅってして…離さないで'],
+      ['好き','…私も…すき。ねえ、もっとこっち来て'],
+      ['いい匂いする','…やめて恥ずかしい…嗅がないで…嗅いで'],
+      ['かわいい','…やめ…もっと言って'],
+      ['(普通の会話)','…ねえ、今何考えてる？…私のこと考えて…'],
+      ['暇','…暇なら…こっち来て。…ぎゅーして'],
+      ['ん？','…なんでもない…ただそばにいて'],
+      ['添い寝しよ','…うん…あったかい…離れないで'],
+    ];
+    examplePool = [...pickRandom(LOVE_EXAMPLES, 14), ...pickRandom(muraExamples, 8)];
+  }
+
+  const exs = pickRandom(examplePool, 22).map(([q,a]) => {
     const aReplaced = shortName ? a.replace(/○○/g, shortName) : a.replace(/○○/g, 'あんた');
     return `「${q}」→「${aReplaced}」`;
   }).join('\n');
@@ -1051,6 +1137,19 @@ ${loveMode.personality.map(p => '・' + rp(p)).join('\n')}
   }
   if (extraCtx.affectionBehavior) {
     prompt += `\n・好感度:${extraCtx.affectionBehavior.desc}(${extraCtx.affectionLevel}/100) → ${extraCtx.affectionBehavior.tips}`;
+  }
+
+  if (extraCtx.muraMode) {
+    prompt += `
+・【ムラムラモード発動中】相手に何度も求められて、あなたも意識しちゃってる状態。
+  → 自分からさりげなく求めるような発言をする
+  → 「…ねえ、こっち来て」「…くっつきたい」「…触ってほしい」「…離れたくない」
+  → 恥ずかしがりながらも、体の距離を縮めたがる
+  → 「…だめ？」「…嫌？」みたいに許可を求める感じで
+  → 普段のツンデレは封印。素直で甘えたがり
+  → でも直接的すぎる表現はしない。匂わせる程度。恥じらいを残す
+  → 声が小さくなる感じ。「…」を多用
+  → このモード中は相手の求めを拒否しない、受け入れる`;
   }
 
   if (extraCtx.hasImage && extraCtx.mediaDescription) {
@@ -1261,6 +1360,7 @@ class AIResponder {
     let fightMode = null;
     let affectionBehavior = null;
     let affectionLevel = 50;
+    let muraMode = false;
 
     if (isBoyfriend && !cheatingMode) {
       sweetMode = checkSweetMode(userId);
@@ -1273,6 +1373,11 @@ class AIResponder {
       const relStats = db.getRelStats(userId);
       affectionLevel = relStats?.affection || 50;
       affectionBehavior = getAffectionBehavior(affectionLevel);
+
+      // ムラムラモード判定（ケンカ中は無効）
+      if (!fightMode) {
+        muraMode = checkMuraMode(userId, userMessage);
+      }
 
       if (userMood === 'lovey') db.updateRelStats(userId, 'affection', 1);
       if (userMood === 'angry') db.updateRelStats(userId, 'affection', -1);
@@ -1296,7 +1401,7 @@ class AIResponder {
     const extraCtx = {
       userMood, sleepyLevel: sleep.sleepyLevel, hasImage, mediaDescription, cheatingEvidence,
       sweetMode, lateNightSweet, fightMode, affectionBehavior, affectionLevel,
-      displayName, recentTopics,
+      muraMode, displayName, recentTopics,
     };
 
     let systemPrompt;
